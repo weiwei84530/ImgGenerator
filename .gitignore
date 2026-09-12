@@ -1,0 +1,12 @@
+# Local project instructions and private planning context.
+/AGENTS.md
+node_modules/
+dist/
+test-results/
+playwright-report/
+.local/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
