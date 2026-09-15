@@ -8,6 +8,7 @@ export interface ApiItem {
   imageDataURI?: string;
   imageBase64Data?: string;
   imageURL?: string;
+  videoURL?: string;
   cost?: number;
   code?: string;
   message?: string;
@@ -127,5 +128,45 @@ export async function resultBlob(item: ApiItem) {
     blob.size > 50 * 1024 * 1024
   )
     throw new Error('圖片格式或大小無法保存。');
+  return blob;
+}
+
+export async function videoBlob(item: ApiItem): Promise<Blob> {
+  if (!item.videoURL) throw new Error('尚未收到影片資料。');
+  const url = new URL(item.videoURL);
+  if (url.protocol !== 'https:' || !url.hostname.endsWith('.runware.ai'))
+    throw new Error('影片來源無法確認。');
+  const response = await fetch(url, {
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    redirect: 'error',
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!response.ok || !response.body) throw new Error('影片下載未完成，請查詢原任務重試保存。');
+  const limit = 100 * 1024 * 1024;
+  if (Number(response.headers.get('content-length')) > limit) {
+    await response.body.cancel();
+    throw new Error('影片超過本機單檔 100 MB 限制。');
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new Error('影片超過本機單檔 100 MB 限制。');
+      }
+      chunks.push(new Uint8Array(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const blob = new Blob(chunks, { type: 'video/mp4' });
+  const signature = new TextDecoder().decode(await blob.slice(4, 8).arrayBuffer());
+  if (!size || signature !== 'ftyp') throw new Error('影片格式無法確認，請查詢原任務重試保存。');
   return blob;
 }

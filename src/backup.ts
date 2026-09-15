@@ -2,19 +2,11 @@ import { unzip, zip, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
 import { asMedia, changed, database, mediaRecord } from './db';
 import type { Job, Media, Work } from './types';
+import { modelIds } from './types';
+import { draftSchema } from './draft-schema';
+import { models } from './models';
 
 const id = z.string().uuid();
-const draftSchema = z.object({
-  prompt: z.string().max(32000),
-  models: z.array(z.enum(['banana', 'gpt'])).max(2),
-  ratio: z.enum(['portrait', 'square', 'landscape']),
-  resolution: z.enum(['1K', '2K']),
-  count: z.number().int().min(1).max(4),
-  refs: z.array(id).max(4),
-  googleSearch: z.boolean(),
-  gptQuality: z.enum(['auto', 'low', 'medium', 'high']),
-  gptBackground: z.enum(['auto', 'opaque', 'transparent']),
-});
 const workSchema = z.object({
   id,
   title: z.string().max(100),
@@ -26,7 +18,7 @@ const jobSchema = z.object({
   id,
   workId: id,
   batchId: id,
-  model: z.enum(['banana', 'gpt']),
+  model: z.enum(modelIds),
   createdAt: z.number().finite(),
   draft: draftSchema,
   status: z.enum(['queued', 'sending', 'processing', 'unknown', 'failed', 'succeeded']),
@@ -34,14 +26,14 @@ const jobSchema = z.object({
   cost: z.number().nonnegative().finite().optional(),
 });
 const manifestSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   works: z.array(workSchema).max(10000),
   jobs: z.array(jobSchema).max(50000),
   media: z
     .array(
       z.object({
         id,
-        type: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+        type: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4']),
         name: z.string().max(255),
       }),
     )
@@ -61,9 +53,9 @@ export async function exportBackup(): Promise<Blob> {
   ]);
   const selected = media.filter((m) => used.has(m.id)).map(asMedia);
   if (selected.reduce((size, m) => size + m.blob.size, 0) > 240 * 1024 * 1024)
-    throw new Error('作品超過單次備份容量，請先下載重要圖片並分批整理作品。');
+    throw new Error('作品超過單次備份容量，請先下載重要作品並分批整理。');
   const manifest = {
-    version: 1,
+    version: 2,
     works,
     jobs: jobs.map(({ keyTag: _tag, message: _message, ...job }) => job),
     media: selected.map(({ id, blob, name }) => ({ id, type: blob.type, name })),
@@ -78,7 +70,7 @@ export async function exportBackup(): Promise<Blob> {
   return new Blob([zipped], { type: 'application/zip' });
 }
 export async function importBackup(file: File) {
-  if (file.size > 250 * 1024 * 1024) throw new Error('第一版可還原 250 MB 以內的備份。');
+  if (file.size > 250 * 1024 * 1024) throw new Error('可還原 250 MB 以內的備份。');
   let total = 0;
   let tooLarge = false;
   // Read the archive with an uncompressed-size guard before allocating entries.
@@ -91,7 +83,7 @@ export async function importBackup(file: File) {
           {
             filter: (entry) => {
               total += entry.originalSize;
-              if (entry.originalSize > 50 * 1024 * 1024 || total > 500 * 1024 * 1024) {
+              if (entry.originalSize > 100 * 1024 * 1024 || total > 500 * 1024 * 1024) {
                 tooLarge = true;
                 return false;
               }
@@ -114,7 +106,7 @@ export async function importBackup(file: File) {
   };
   const media: Media[] = data.media.map((m) => {
     const bytes = extracted[`media/${m.id}`];
-    if (!bytes?.length) throw new Error('備份缺少圖片，尚未匯入任何作品。');
+    if (!bytes?.length) throw new Error('備份缺少媒體檔案，尚未匯入任何作品。');
     return {
       id: mapId(m.id),
       name: m.name,
@@ -122,13 +114,20 @@ export async function importBackup(file: File) {
     };
   });
   const mediaIds = new Set(data.media.map((m) => m.id));
+  const mediaTypes = new Map(data.media.map((m) => [m.id, m.type]));
   const workIds = new Set(data.works.map((w) => w.id));
-  for (const d of [...data.works.map((w) => w.draft), ...data.jobs.map((j) => j.draft)])
-    if (d.refs.some((ref) => !mediaIds.has(ref))) throw new Error('備份缺少參考照片。');
+  for (const d of [...data.works.map((w) => w.draft), ...data.jobs.map((j) => j.draft)]) {
+    if (d.refs.some((ref) => !mediaTypes.get(ref)?.startsWith('image/')))
+      throw new Error('備份缺少參考照片或照片格式不符。');
+    if (d.models.some((model) => models[model].kind !== (d.kind ?? 'image')))
+      throw new Error('備份中的模型與作品類別不符。');
+  }
   for (const j of data.jobs)
     if (
       !workIds.has(j.workId) ||
+      models[j.model].kind !== (j.draft.kind ?? 'image') ||
       (j.mediaId && !mediaIds.has(j.mediaId)) ||
+      (j.mediaId && (mediaTypes.get(j.mediaId) === 'video/mp4') !== (j.draft.kind === 'video')) ||
       (j.status === 'succeeded' && !j.mediaId)
     )
       throw new Error('備份作品資料不完整。');

@@ -7,9 +7,10 @@ import {
   keyTag,
   request,
   resultBlob,
+  videoBlob,
   type ApiResponse,
 } from './runware';
-import type { Draft, Job } from './types';
+import { isVideo, type Draft, type Job } from './types';
 
 const running = new Set<string>();
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,28 +41,32 @@ async function handleResponse(
   submitting = false,
 ): Promise<boolean> {
   const item = response.data?.find(
-    (i) => i.taskUUID === job.id && (i.imageDataURI || i.imageBase64Data || i.imageURL),
+    (i) =>
+      i.taskUUID === job.id &&
+      (isVideo(job.draft) ? i.videoURL : i.imageDataURI || i.imageBase64Data || i.imageURL),
   );
   if (item) {
-    const blob = await resultBlob(item);
-    const record = await mediaRecord({ id: job.id, blob, name: `${job.model}-${job.id}.png` });
+    const blob = await (isVideo(job.draft) ? videoBlob(item) : resultBlob(item));
+    const record = await mediaRecord({
+      id: job.id,
+      blob,
+      name: `${job.model}-${job.id}.${isVideo(job.draft) ? 'mp4' : 'png'}`,
+    });
     const tx = (await database).transaction(['jobs', 'media'], 'readwrite');
     void tx.done.catch(() => {});
     // A deletion in another tab must not recreate an orphan result.
     if (await tx.objectStore('jobs').get(job.id)) {
       await tx.objectStore('media').put(record);
-      await tx
-        .objectStore('jobs')
-        .put({
-          ...job,
-          status: 'succeeded',
-          mediaId: job.id,
-          message: undefined,
-          cost:
-            typeof item.cost === 'number' && Number.isFinite(item.cost) && item.cost >= 0
-              ? item.cost
-              : undefined,
-        });
+      await tx.objectStore('jobs').put({
+        ...job,
+        status: 'succeeded',
+        mediaId: job.id,
+        message: undefined,
+        cost:
+          typeof item.cost === 'number' && Number.isFinite(item.cost) && item.cost >= 0
+            ? item.cost
+            : undefined,
+      });
     }
     await tx.done;
     changed();
@@ -132,14 +137,14 @@ export async function runJob(id: string, key: string, allowSubmit = false) {
           }
           if (await handleResponse(job, response, true)) return;
         } else if (job.status === 'queued') {
-          await saveJob({ ...job, status: 'failed', message: '這張圖尚未送出，可以重新生成。' });
+          await saveJob({ ...job, status: 'failed', message: '這份作品尚未送出，可以重新生成。' });
           return;
         }
         job = { ...job, status: 'processing', message: undefined };
         await saveJob(job);
         const started = Date.now();
         let delay = 1800;
-        while (Date.now() - started < 5 * 60 * 1000) {
+        while (Date.now() - started < (isVideo(job.draft) ? 15 : 5) * 60 * 1000) {
           await wait(delay);
           if (!(await db.get('jobs', id))) return;
           if (!navigator.onLine) throw new Error('目前已離線，連線後可查詢原任務。');

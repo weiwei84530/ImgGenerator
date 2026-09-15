@@ -63,7 +63,7 @@ describe('Runware request capabilities', () => {
       [],
     );
     expect('settings' in request && request.settings).toEqual({ background: 'transparent' });
-    expect(request.providerSettings.openai).toEqual({ quality: 'high' });
+    expect(request.providerSettings?.openai).toEqual({ quality: 'high' });
     expect(request.outputFormat).toBe('PNG');
   });
 });

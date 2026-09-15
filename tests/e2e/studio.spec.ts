@@ -74,12 +74,15 @@ type Task = {
 };
 async function mockRunware(
   page: Page,
-  options: { failGpt?: boolean; interrupt?: boolean; badBalance?: boolean } = {},
+  options: { failGpt?: boolean; failVeo?: boolean; interrupt?: boolean; badBalance?: boolean } = {},
 ) {
   const submitted: Task[] = [];
   const polled: Task[] = [];
   const failed = new Set<string>();
   let interrupt = options.interrupt;
+  await page.route('https://im.runware.ai/test-*.mp4', (route) =>
+    route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/sample.mp4' }),
+  );
   await page.route('https://api.runware.ai/v1', async (route) => {
     const [task] = route.request().postDataJSON() as Task[];
     const reply = (body: unknown) =>
@@ -94,8 +97,12 @@ async function mockRunware(
           ? { errors: [{ code: 'forbidden' }] }
           : { data: [{ taskType: 'accountManagement', balance: 12.34 }] },
       );
-    if (task.taskType === 'imageInference') {
+    if (task.taskType === 'imageInference' || task.taskType === 'videoInference') {
       submitted.push(task);
+      if (options.failVeo && task.model === 'google:3@3') {
+        failed.add(task.taskUUID);
+        options.failVeo = false;
+      }
       if (options.failGpt && task.model?.startsWith('openai')) {
         failed.add(task.taskUUID);
         options.failGpt = false;
@@ -111,6 +118,18 @@ async function mockRunware(
       if (failed.has(task.taskUUID))
         return reply({
           errors: [{ taskUUID: task.taskUUID, status: 'error', code: 'contentModeration' }],
+        });
+      if (submitted.find((t) => t.taskUUID === task.taskUUID)?.taskType === 'videoInference')
+        return reply({
+          data: [
+            {
+              taskType: 'videoInference',
+              taskUUID: task.taskUUID,
+              status: 'success',
+              videoURL: `https://im.runware.ai/test-${task.taskUUID}.mp4`,
+              cost: 0.336,
+            },
+          ],
         });
       return reply({
         data: [
@@ -139,6 +158,138 @@ async function newWork(page: Page) {
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await page.getByLabel('描述你的想法').fill('一隻貓咪在溫柔的花園中');
 }
+
+test('category defaults remember parameters while new works keep prompts and references empty', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  await page.getByLabel('移除 GPT Image 2').click();
+  await page.getByLabel('增加張數').click();
+  await page.getByRole('button', { name: '方形', exact: false }).click();
+  await page.getByRole('button', { name: '主選單' }).click();
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await expect(page.getByLabel('移除 Kling 3.0 Standard')).toBeVisible();
+  await expect(page.getByLabel('生成聲音', { exact: true })).not.toBeChecked();
+  await page.getByLabel('生成聲音', { exact: true }).check();
+  await page.getByLabel('影片長度').selectOption('8');
+  await page.reload();
+  await page.getByRole('button', { name: /製作圖片/ }).click();
+  await expect(page.getByLabel('移除 Nano Banana 2')).toBeVisible();
+  await expect(page.getByLabel('移除 GPT Image 2')).toHaveCount(0);
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('');
+  await expect(page.locator('.stepper')).toContainText('2 張');
+  await page.getByRole('button', { name: '主選單' }).click();
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await expect(page.getByLabel('影片長度')).toHaveValue('8');
+  await expect(page.getByLabel('生成聲音', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('');
+});
+
+test('expanded image models generate alongside existing models and pass through references', async ({
+  page,
+}) => {
+  const api = await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  for (const model of ['FLUX.2 Pro', 'Seedream 5.0 Pro']) {
+    await page.getByRole('button', { name: '新增模型' }).click();
+    await page.getByRole('button', { name: model, exact: true }).click();
+  }
+  await page.getByLabel('加入照片', { exact: true }).setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PNG, 'base64'),
+  });
+  await expect(page.getByAltText('參考照片 1')).toBeVisible();
+  await page.getByRole('button', { name: '開始修改照片' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(4);
+  expect(api.submitted.map((t) => t.model).sort()).toEqual([
+    'bfl:5@1',
+    'bytedance:seedream@5.0-pro',
+    'google:4@3',
+    'openai:gpt-image@2',
+  ]);
+  expect(api.submitted.every((t) => t.inputs?.referenceImages.length === 1)).toBe(true);
+});
+
+test('video first-frame generation plays and downloads, hides costs, and survives backup restore', async ({
+  page,
+  browserName,
+}) => {
+  const api = await mockRunware(page);
+  page.on('dialog', (d) => void d.accept());
+  await setup(page, '?costs=hidden');
+  await newWork(page);
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
+  await page.getByRole('button', { name: /檢視 Nano Banana/ }).click();
+  await page.getByRole('button', { name: '用這張圖製作影片' }).click();
+  await expect(page.getByAltText('參考照片 1')).toBeVisible();
+  await page.getByLabel('描述你的想法').fill('讓花朵輕輕搖動');
+  await page.getByRole('button', { name: '開始生成影片' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 影片/ })).toHaveCount(1);
+  const videoTask = api.submitted.find((t) => t.taskType === 'videoInference')!;
+  expect(videoTask.inputs).toHaveProperty('frameImages');
+  expect(videoTask.width).toBeUndefined();
+  await expect(page.getByText(/實際費用/)).toHaveCount(0);
+  await page.getByRole('button', { name: /檢視 .* 影片/ }).click();
+  const player = page.getByRole('dialog').locator('video');
+  await expect(player).toHaveAttribute('controls', '');
+  // Windows WebKit rejects H.264 MP4 despite canPlayType; Linux CI tests playback.
+  if (browserName === 'webkit' && process.platform === 'win32') {
+    await expect(
+      page.getByRole('dialog').getByText('這個瀏覽器無法播放影片，請使用下方「下載影片」後開啟。'),
+    ).toBeVisible();
+  } else {
+    await player.evaluate((v) => (v as HTMLVideoElement).play());
+    await expect
+      .poll(() => player.evaluate((v) => (v as HTMLVideoElement).currentTime))
+      .toBeGreaterThan(0);
+  }
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下載影片' }).click();
+  expect((await downloadPromise).suggestedFilename()).toMatch(/\.mp4$/);
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+  await page.getByLabel('設定', { exact: true }).click();
+  const backup = page.waitForEvent('download');
+  await page.getByRole('button', { name: '匯出備份' }).click();
+  const archive = await (await backup).path();
+  await page.getByRole('button', { name: '清除所有作品', exact: true }).click();
+  await page.getByLabel('還原備份', { exact: true }).setInputFiles(archive!);
+  await expect(page.getByRole('status')).toContainText('已還原');
+  expect(api.submitted).toHaveLength(3);
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(2);
+  await expect(page.getByText('1 支影片', { exact: true })).toBeVisible();
+  await expect(page.locator('.work-list video')).toHaveCount(1);
+});
+
+test('video partial failures retry only the failed model and reload only polls the original task', async ({
+  page,
+}) => {
+  const api = await mockRunware(page, { failVeo: true, interrupt: true });
+  page.on('dialog', (d) => void d.accept());
+  await setup(page);
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await page.getByRole('button', { name: '新增模型' }).click();
+  await page.getByRole('button', { name: 'Veo 3.1 Fast', exact: true }).click();
+  await page.getByLabel('描述你的想法').fill('一朵花在微風中搖動');
+  await page.getByRole('button', { name: '開始生成影片' }).click();
+  await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await page.locator('.work-open').first().click();
+  await page.getByRole('tab', { name: /本次作品/ }).click();
+  await expect(page.getByRole('button', { name: /檢視 Kling .* 影片/ })).toHaveCount(1);
+  expect(api.submitted).toHaveLength(2);
+  await page.getByRole('button', { name: '重新生成這支' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 影片/ })).toHaveCount(2);
+  expect(api.submitted).toHaveLength(3);
+  expect(api.submitted[2].model).toBe('google:3@3');
+});
 
 test('first-use validation, saved key, replacement, and hidden money preference', async ({
   page,

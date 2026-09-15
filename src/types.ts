@@ -1,6 +1,9 @@
-export type ModelId = 'banana' | 'gpt';
+export const modelIds = ['banana', 'gpt', 'flux', 'seedream', 'kling', 'seedance', 'veo'] as const;
+export type ModelId = (typeof modelIds)[number];
+export type WorkKind = 'image' | 'video';
 export type Ratio = 'portrait' | 'square' | 'landscape';
 export interface Draft {
+  kind?: WorkKind;
   prompt: string;
   models: ModelId[];
   ratio: Ratio;
@@ -10,6 +13,11 @@ export interface Draft {
   googleSearch: boolean;
   gptQuality: 'auto' | 'low' | 'medium' | 'high';
   gptBackground: 'auto' | 'opaque' | 'transparent';
+  seedreamThinking?: boolean;
+  duration?: number;
+  videoResolution?: '720p' | '1080p';
+  audio?: boolean;
+  klingNegativePrompt?: string;
 }
 export interface Work {
   id: string;
@@ -57,3 +65,13 @@ export const newDraft = (): Draft => ({
   gptBackground: 'auto',
 });
 export const isActive = (job: Job) => ['queued', 'sending', 'processing'].includes(job.status);
+export const isVideo = (draft: Draft) => draft.kind === 'video';
+export const newVideoDraft = (): Draft => ({
+  ...newDraft(),
+  kind: 'video',
+  models: ['kling'],
+  duration: 4,
+  videoResolution: '720p',
+  audio: false,
+  klingNegativePrompt: '',
+});

@@ -20,11 +20,14 @@ import {
   Sparkles,
   Trash2,
   X,
+  Film,
+  Play,
 } from 'lucide-react';
 import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
 import { exportBackup, importBackup } from './backup';
 import { queueGeneration, resumeJobs, runJob } from './engine';
-import { dimensions, models } from './models';
+import { dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
+import { rememberDraft, rememberedDraft, clearDraftDefaults } from './draft-defaults';
 import { download, importPhoto } from './media';
 import {
   readKey,
@@ -36,13 +39,13 @@ import {
 import { fetchBalance, keyTag, validateKey } from './runware';
 import {
   isActive,
-  newDraft,
+  isVideo,
   type Balance,
   type Draft,
   type Job,
-  type ModelId,
   type Preferences,
   type Work,
+  type WorkKind,
 } from './types';
 
 const REPO = 'https://github.com/weiwei84530/ImgGenerator';
@@ -56,14 +59,28 @@ const date = (value: number) =>
   }).format(value);
 type Notify = (message: string) => void;
 
-function LocalImage({ id, alt, className }: { id: string; alt: string; className?: string }) {
+function LocalImage({
+  id,
+  alt,
+  className,
+  controls = false,
+}: {
+  id: string;
+  alt: string;
+  className?: string;
+  controls?: boolean;
+}) {
   const [url, setUrl] = useState('');
+  const [video, setVideo] = useState(false);
+  const [playbackError, setPlaybackError] = useState(false);
   useEffect(() => {
+    setPlaybackError(false);
     let alive = true;
     let objectUrl = '';
     void getMedia(id)
       .then((media) => {
         if (alive && media) {
+          setVideo(media.blob.type === 'video/mp4');
           objectUrl = URL.createObjectURL(media.blob);
           setUrl(objectUrl);
         }
@@ -75,11 +92,31 @@ function LocalImage({ id, alt, className }: { id: string; alt: string; className
     };
   }, [id]);
   return url ? (
-    <img src={url} alt={alt} className={className} />
+    video ? (
+      <>
+        <video
+          src={url}
+          aria-label={alt}
+          className={className}
+          controls={controls}
+          muted={!controls}
+          playsInline
+          preload="metadata"
+          onError={() => setPlaybackError(true)}
+        />
+        {controls && playbackError && (
+          <p className="hint" role="status">
+            這個瀏覽器無法播放影片，請使用下方「下載影片」後開啟。
+          </p>
+        )}
+      </>
+    ) : (
+      <img src={url} alt={alt} className={className} />
+    )
   ) : (
     <div className="image-placeholder">
       <Images aria-hidden="true" />
-      <span>載入圖片</span>
+      <span>載入作品</span>
     </div>
   );
 }
@@ -317,8 +354,26 @@ function Workspace({
   const [saveError, setSaveError] = useState(false);
   const active = jobs.some(isActive);
   const total = draft.models.length * draft.count;
+  const video = isVideo(draft);
+  const unit = video ? '支' : '張';
+  const mediaName = video ? '影片' : '圖片';
+  const availableModels = modelsFor(video ? 'video' : 'image');
+  const maxRefs = video ? 1 : 4;
   const update = (patch: Partial<Draft>) => {
     const next = { ...latestDraft.current, ...patch };
+    if (isVideo(next) && next.videoResolution === '1080p' && !supports1080(next)) {
+      next.videoResolution = '720p';
+      notify('已切換為所選模型共同支援的 720p。');
+    }
+    if (isVideo(next) && next.ratio === 'square' && next.models.includes('veo')) {
+      next.ratio = 'portrait';
+      notify('Veo 不提供方形選項，已切換為手機直向；有照片時依照片調整。');
+    }
+    try {
+      rememberDraft(next);
+    } catch {
+      notify('這次設定無法記住，請檢查瀏覽器儲存空間。');
+    }
     latestDraft.current = next;
     setDraft(next);
     const updated = {
@@ -362,7 +417,7 @@ function Workspace({
     <>
       <div className="page-heading">
         <div className="eyebrow">YOUR CREATIVE SPACE</div>
-        <h1>今天，想畫些什麼？</h1>
+        <h1>{video ? '讓這一刻，動起來。' : '今天，想畫些什麼？'}</h1>
         <p className="muted">一個想法，看看不同 AI 的詮釋。</p>
       </div>
       <div className="tabs" role="tablist" aria-label="工作區">
@@ -393,9 +448,13 @@ function Workspace({
               value={draft.prompt}
               maxLength={32000}
               placeholder={
-                draft.refs.length
-                  ? '想怎麼修改這張照片？例如：保留人物，把背景換成溫暖的花園。'
-                  : '例如：一隻橘貓坐在窗邊，午後陽光灑在牠身上，溫柔的水彩風格…'
+                video
+                  ? draft.refs.length
+                    ? '例如：讓照片中的花朵隨風輕輕搖動，鏡頭緩慢靠近。'
+                    : '例如：午後花園裡，一隻橘貓伸懶腰，陽光灑落，鏡頭緩慢靠近。'
+                  : draft.refs.length
+                    ? '想怎麼修改這張照片？例如：保留人物，把背景換成溫暖的花園。'
+                    : '例如：一隻橘貓坐在窗邊，午後陽光灑在牠身上，溫柔的水彩風格…'
               }
               onChange={(e) => update({ prompt: e.target.value })}
               rows={5}
@@ -403,11 +462,20 @@ function Workspace({
             <div className="prompt-footer">
               <Leaf size={15} />
               <span>
-                {draft.refs.length
-                  ? '這次會以你上傳的照片進行修改'
-                  : '像跟朋友說話一樣，自然描述就好'}
+                {video
+                  ? draft.refs.length
+                    ? '照片會作為影片的起始畫面'
+                    : '描述動作、鏡頭與想要的氛圍'
+                  : draft.refs.length
+                    ? '這次會以你上傳的照片進行修改'
+                    : '像跟朋友說話一樣，自然描述就好'}
               </span>
             </div>
+            {draft.prompt.length > promptLimit(draft) && (
+              <p className="error" role="alert">
+                目前模型最多接受 {promptLimit(draft).toLocaleString()} 字，請縮短描述。
+              </p>
+            )}
             <div className="refs">
               {draft.refs.map((ref, index) => (
                 <div className="ref-image" key={ref}>
@@ -420,24 +488,24 @@ function Workspace({
                   </button>
                 </div>
               ))}
-              {draft.refs.length < 4 && (
+              {draft.refs.length < maxRefs && (
                 <label className="upload-button">
                   <ImagePlus size={21} />
                   <span>
                     {uploading ? '讀取照片中…' : '加入照片'}
-                    <small>選填 · 最多 4 張</small>
+                    <small>選填 · 最多 {maxRefs} 張</small>
                   </span>
                   <input
                     type="file"
                     aria-label="加入照片"
                     accept="image/jpeg,image/png,image/webp"
-                    multiple
+                    multiple={!video}
                     disabled={uploading}
                     onChange={async (e) => {
                       const files = Array.from(e.target.files ?? []);
                       e.target.value = '';
-                      if (files.length + draft.refs.length > 4) {
-                        notify('最多可加入 4 張參考照片。');
+                      if (files.length + draft.refs.length > maxRefs) {
+                        notify(`最多可加入 ${maxRefs} 張參考照片。`);
                         return;
                       }
                       setUploading(true);
@@ -481,15 +549,15 @@ function Workspace({
                 </div>
               ))}
             </div>
-            {draft.models.length < 2 && (
+            {draft.models.length < availableModels.length && (
               <button className="add-model" onClick={() => setAddModel(!addModel)}>
                 <Plus size={17} />
                 新增模型
               </button>
             )}
-            {addModel && draft.models.length < 2 && (
+            {addModel && draft.models.length < availableModels.length && (
               <div className="model-picker">
-                {(Object.keys(models) as ModelId[])
+                {availableModels
                   .filter((m) => !draft.models.includes(m))
                   .map((m) => (
                     <button
@@ -511,52 +579,108 @@ function Workspace({
             <h2 className="section-label">
               <span className="step">03</span>畫面的樣子
             </h2>
-            <fieldset>
-              <legend>圖片比例</legend>
-              <div className="ratio-options">
-                {(['portrait', 'square', 'landscape'] as const).map((ratio, index) => (
-                  <button
-                    key={ratio}
-                    type="button"
-                    aria-pressed={draft.ratio === ratio}
-                    onClick={() => update({ ratio })}
-                  >
-                    <span className={`ratio-shape ${ratio}`} />
-                    <strong>{['手機直向', '方形', '橫向'][index]}</strong>
-                    <small>{['約 9 : 16', '1 : 1', '約 16 : 9'][index]}</small>
-                  </button>
-                ))}
-              </div>
-            </fieldset>
+            {video && draft.refs.length > 0 ? (
+              <p className="hint">
+                影片比例依起始照片調整。Veo 會補邊適配直向或橫向，保留照片內容；實際尺寸由模型決定。
+              </p>
+            ) : (
+              <fieldset>
+                <legend>{mediaName}比例</legend>
+                <div className="ratio-options">
+                  {(['portrait', 'square', 'landscape'] as const).map((ratio, index) => (
+                    <button
+                      key={ratio}
+                      type="button"
+                      aria-pressed={draft.ratio === ratio}
+                      disabled={video && ratio === 'square' && draft.models.includes('veo')}
+                      onClick={() => update({ ratio })}
+                    >
+                      <span className={`ratio-shape ${ratio}`} />
+                      <strong>{['手機直向', '方形', '橫向'][index]}</strong>
+                      <small>{['約 9 : 16', '1 : 1', '約 16 : 9'][index]}</small>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <div className="setting-row">
               <label htmlFor="resolution">
                 清晰度<small>較高解析度需要更多時間</small>
               </label>
               <select
                 id="resolution"
-                value={draft.resolution}
-                onChange={(e) => update({ resolution: e.target.value as Draft['resolution'] })}
+                value={video ? (draft.videoResolution ?? '720p') : draft.resolution}
+                onChange={(e) =>
+                  video
+                    ? update({ videoResolution: e.target.value as Draft['videoResolution'] })
+                    : update({ resolution: e.target.value as Draft['resolution'] })
+                }
               >
-                <option value="1K">標準 · 1K</option>
-                <option value="2K">細緻 · 2K</option>
+                {video ? (
+                  <>
+                    <option value="720p">標準 · 720p</option>
+                    <option value="1080p" disabled={!supports1080(draft)}>
+                      細緻 · 1080p（限 Veo）
+                    </option>
+                  </>
+                ) : (
+                  <>
+                    <option value="1K">標準 · 1K</option>
+                    <option value="2K">細緻 · 2K</option>
+                  </>
+                )}
               </select>
             </div>
+            {video && (
+              <>
+                <label className="setting-row">
+                  影片長度
+                  <select
+                    value={draft.duration ?? 4}
+                    onChange={(e) => update({ duration: Number(e.target.value) })}
+                  >
+                    {[4, 6, 8].map((seconds) => (
+                      <option value={seconds} key={seconds}>
+                        {seconds} 秒
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.audio ?? false}
+                    onChange={(e) => update({ audio: e.target.checked })}
+                  />
+                  生成聲音
+                </label>
+                <p className="hint">
+                  聲音由 AI 配合畫面生成，可在描述中指定音效或對白；不保證逐字準確。
+                </p>
+              </>
+            )}
             <div className="setting-row">
               <div>
-                每個 AI 生成<small>總共會得到 {total} 張圖片</small>
+                每個 AI 生成
+                <small>
+                  總共會得到 {total} {unit}
+                  {mediaName}
+                </small>
               </div>
               <div className="stepper">
                 <button
-                  aria-label="減少張數"
+                  aria-label={video ? '減少支數' : '減少張數'}
                   disabled={draft.count <= 1}
                   onClick={() => update({ count: draft.count - 1 })}
                 >
                   <Minus size={17} />
                 </button>
-                <span>{draft.count} 張</span>
+                <span>
+                  {draft.count} {unit}
+                </span>
                 <button
-                  aria-label="增加張數"
-                  disabled={draft.count >= 4}
+                  aria-label={video ? '增加支數' : '增加張數'}
+                  disabled={draft.count >= (video ? 2 : 4)}
                   onClick={() => update({ count: draft.count + 1 })}
                 >
                   <Plus size={17} />
@@ -569,13 +693,19 @@ function Workspace({
                 進階設定
                 <ChevronDown size={17} />
               </summary>
-              <p className="hint">依各模型能力設定；尺寸略有差異，圖片不會被裁切。</p>
+              <p className="hint">
+                {video
+                  ? '照片會作為起始畫面；不同模型的動作與聲音可能不同。'
+                  : '依各模型能力設定；尺寸略有差異，圖片不會被裁切。'}
+              </p>
               {draft.models.map((model) => (
                 <div className="advanced-model" key={model}>
                   <strong>{models[model].name}</strong>
                   <small>
-                    輸出 {dimensions(model, draft).width} × {dimensions(model, draft).height} px ·
-                    PNG
+                    {video && draft.refs.length
+                      ? '依照片決定尺寸'
+                      : `輸出 ${dimensions(model, draft).width} × ${dimensions(model, draft).height} px`}{' '}
+                    · {video ? 'MP4' : 'PNG'}
                   </small>
                   {model === 'banana' ? (
                     <label className="check-row">
@@ -586,7 +716,7 @@ function Workspace({
                       />
                       參考網路資料生成圖片
                     </label>
-                  ) : (
+                  ) : model === 'gpt' ? (
                     <>
                       <label className="setting-row">
                         繪製品質
@@ -616,6 +746,27 @@ function Workspace({
                         </select>
                       </label>
                     </>
+                  ) : model === 'seedream' ? (
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={draft.seedreamThinking ?? true}
+                        onChange={(e) => update({ seedreamThinking: e.target.checked })}
+                      />
+                      加強構思（可能需要更多時間）
+                    </label>
+                  ) : model === 'kling' ? (
+                    <label className="setting-row">
+                      不想出現的內容
+                      <input
+                        value={draft.klingNegativePrompt ?? ''}
+                        maxLength={2500}
+                        onChange={(e) => update({ klingNegativePrompt: e.target.value })}
+                        placeholder="例如：鏡頭晃動"
+                      />
+                    </label>
+                  ) : (
+                    <p className="hint">使用上方共用設定即可。</p>
                   )}
                 </div>
               ))}
@@ -625,8 +776,8 @@ function Workspace({
             <div className="submit-summary">
               <span>
                 <strong>{draft.models.length}</strong> 個 AI <span className="times">×</span> 各{' '}
-                <strong>{draft.count}</strong> 張 <span className="times">=</span>{' '}
-                <strong>{total}</strong> 張作品
+                <strong>{draft.count}</strong> {unit} <span className="times">=</span>{' '}
+                <strong>{total}</strong> {unit}作品
               </span>
               {showMoney && <small>預估費用：依實際用量計費，送出前無法精準估價。</small>}
             </div>
@@ -637,7 +788,8 @@ function Workspace({
                 active ||
                 uploading ||
                 !draft.models.length ||
-                draft.prompt.trim().length < 3
+                draft.prompt.trim().length < 3 ||
+                draft.prompt.length > promptLimit(draft)
               }
               onClick={() => void submit()}
             >
@@ -646,9 +798,11 @@ function Workspace({
                 ? '正在送出…'
                 : active
                   ? '作品正在生成中'
-                  : draft.refs.length
-                    ? '開始修改照片'
-                    : '開始生成圖片'}
+                  : video
+                    ? '開始生成影片'
+                    : draft.refs.length
+                      ? '開始修改照片'
+                      : '開始生成圖片'}
               {!active && !submitting && <ArrowRight size={19} />}
             </button>
           </div>
@@ -661,7 +815,7 @@ function Workspace({
                 <Images size={31} />
               </div>
               <h2>美好的作品，從一個想法開始</h2>
-              <p>回到編輯畫面，寫下想畫的內容吧。</p>
+              <p>回到編輯畫面，寫下想創作的內容吧。</p>
               <button className="secondary" onClick={() => setTab('edit')}>
                 開始編輯 <ArrowRight size={17} />
               </button>
@@ -670,9 +824,15 @@ function Workspace({
             <>
               <div className="results-heading">
                 <h2>這次的創作旅程</h2>
-                <span>{jobs.filter((j) => j.status === 'succeeded').length} 張作品</span>
+                <span>
+                  {jobs.filter((j) => j.status === 'succeeded').length} {unit}作品
+                </span>
               </div>
-              <p className="hint">圖片會分別出現。點一下，放大欣賞或接著改圖。</p>
+              <p className="hint">
+                {video
+                  ? '影片通常需要幾分鐘。完成後點一下即可播放；重新開啟會查詢原任務。'
+                  : '圖片會分別出現。點一下，放大欣賞或接著改圖。'}
+              </p>
               {[...new Set(jobs.map((j) => j.batchId))].reverse().map((batch, index) => (
                 <section className="batch" key={batch}>
                   <div className="batch-heading">
@@ -690,13 +850,13 @@ function Workspace({
                           {job.status === 'succeeded' && job.mediaId ? (
                             <button
                               className="result-image"
-                              aria-label={`檢視 ${models[job.model].name} 圖片`}
+                              aria-label={`檢視 ${models[job.model].name} ${mediaName}`}
                               onClick={() => openImage(job)}
                             >
                               <LocalImage id={job.mediaId} alt={job.draft.prompt} />
                               <span className="zoom-hint">
-                                <Eye size={16} />
-                                放大
+                                {video ? <Play size={16} /> : <Eye size={16} />}
+                                {video ? '播放' : '放大'}
                               </span>
                             </button>
                           ) : (
@@ -704,14 +864,18 @@ function Workspace({
                               {isActive(job) ? (
                                 <>
                                   <LoaderCircle className="spin" size={27} />
-                                  <strong>正在為你作畫</strong>
+                                  <strong>{video ? '正在製作影片' : '正在為你作畫'}</strong>
                                   <span>稍等一下，靈感正在成形</span>
                                 </>
                               ) : (
                                 <>
                                   <Images size={28} />
                                   <strong>
-                                    {job.status === 'failed' ? '這張圖尚未完成' : '等待確認結果'}
+                                    {job.status === 'failed'
+                                      ? video
+                                        ? '這支影片尚未完成'
+                                        : '這張圖尚未完成'
+                                      : '等待確認結果'}
                                   </strong>
                                   <span>{job.message}</span>
                                   {job.status === 'failed' ? (
@@ -719,7 +883,11 @@ function Workspace({
                                       className="secondary"
                                       disabled={submitting || active}
                                       onClick={() => {
-                                        if (confirm('重新生成這一張圖片？這會送出新的生成請求。'))
+                                        if (
+                                          confirm(
+                                            `重新生成這${unit}${mediaName}？這會送出新的生成請求。`,
+                                          )
+                                        )
                                           void submit({
                                             ...job.draft,
                                             models: [job.model],
@@ -727,7 +895,7 @@ function Workspace({
                                           });
                                       }}
                                     >
-                                      重新生成這張
+                                      {video ? '重新生成這支' : '重新生成這張'}
                                     </button>
                                   ) : (
                                     <button
@@ -896,9 +1064,9 @@ export default function App() {
     setScreen('work');
     window.scrollTo({ top: 0 });
   };
-  const createWork = async (ref?: string) => {
+  const createWork = async (ref?: string, kind: WorkKind = 'image') => {
     try {
-      const draft = newDraft();
+      const draft = rememberedDraft(kind);
       if (ref) draft.refs = [ref];
       const work: Work = {
         id: crypto.randomUUID(),
@@ -1042,6 +1210,28 @@ export default function App() {
                   <Sparkles />
                 </div>
               </button>
+              <button
+                className="create-card video-create-card"
+                onClick={() => void createWork(undefined, 'video')}
+                disabled={storageError}
+              >
+                <div>
+                  <span className="feature-label">讓畫面動起來</span>
+                  <h2>製作影片</h2>
+                  <p>
+                    描述一段動作，
+                    <br />
+                    或讓喜歡的照片成為短片。
+                  </p>
+                  <span className="create-cta">
+                    開始製作 <ArrowRight size={19} />
+                  </span>
+                </div>
+                <div className="video-art" aria-hidden="true">
+                  <Film size={62} />
+                  <Play size={24} />
+                </div>
+              </button>
               <button className="library-link" onClick={() => setScreen('library')}>
                 <span className="library-icon">
                   <FolderHeart size={25} />
@@ -1050,7 +1240,7 @@ export default function App() {
                   <strong>我的作品</strong>
                   <small>
                     {works.length
-                      ? `${works.length} 份創作，${completed} 張已保存圖片`
+                      ? `${works.length} 份創作，${completed} 個已保存成果`
                       : '收藏每一次靈光乍現'}
                   </small>
                 </div>
@@ -1087,7 +1277,7 @@ export default function App() {
               )}
               <div className="local-note">
                 <ShieldCheck size={18} />
-                <span>作品保存在這台裝置，記得下載喜歡的圖片。</span>
+                <span>作品保存在這台裝置，記得下載喜歡的圖片與影片。</span>
               </div>
             </>
           )}
@@ -1124,7 +1314,7 @@ export default function App() {
               {!works.length ? (
                 <div className="empty-state">
                   <FolderHeart size={40} />
-                  <p>還沒有作品，來畫第一張吧。</p>
+                  <p>還沒有作品，開始第一次創作吧。</p>
                 </div>
               ) : (
                 <div className="work-list">
@@ -1148,7 +1338,7 @@ export default function App() {
                                 jobs.filter((j) => j.workId === work.id && j.status === 'succeeded')
                                   .length
                               }{' '}
-                              張圖片
+                              {isVideo(work.draft) ? '支影片' : '張圖片'}
                             </span>
                           </div>
                         </button>
@@ -1241,7 +1431,7 @@ export default function App() {
             <section>
               <h3>作品與備份</h3>
               <p className="hint">
-                備份包含圖片、描述與設定，不含 API Key。請妥善保存；更換裝置後可以還原。
+                備份包含圖片、影片、描述與作品設定，不含 API Key。請妥善保存；更換裝置後可以還原。
               </p>
               <div className="backup-actions">
                 <button
@@ -1256,7 +1446,7 @@ export default function App() {
                       );
                       notify('備份已準備好，請保存下載的 ZIP 檔。');
                     } catch {
-                      notify('匯出失敗，可能是記憶體或儲存空間不足。請先逐張下載重要圖片。');
+                      notify('匯出失敗，可能是記憶體或儲存空間不足。請先個別下載重要作品。');
                     } finally {
                       setDataBusy(false);
                     }
@@ -1291,7 +1481,7 @@ export default function App() {
                 </label>
               </div>
               <p className="hint">
-                第一版單次可還原 250 MB 以內的 ZIP。手機記憶體有限，重要作品也請另外下載。
+                單次可還原 250 MB 以內的 ZIP。手機記憶體有限，重要作品也請另外下載。
               </p>
               <button
                 className="text-button danger"
@@ -1333,6 +1523,7 @@ export default function App() {
                     await clearWorks();
                     saveKey('');
                     resetPreferences();
+                    clearDraftDefaults();
                     setApiKey('');
                     setPreferences(readPreferences());
                     setScreen('home');
@@ -1360,13 +1551,15 @@ export default function App() {
           close={() => setImageJob(null)}
         >
           <div className="viewer-image">
-            <LocalImage id={imageJob.mediaId} alt={imageJob.draft.prompt} />
+            <LocalImage id={imageJob.mediaId} alt={imageJob.draft.prompt} controls />
           </div>
           <div className="viewer-info">
             <p>{imageJob.draft.prompt}</p>
             <small>
-              {date(imageJob.createdAt)} · {dimensions(imageJob.model, imageJob.draft).width} ×{' '}
-              {dimensions(imageJob.model, imageJob.draft).height} px（請求尺寸）
+              {date(imageJob.createdAt)} ·{' '}
+              {isVideo(imageJob.draft)
+                ? `${imageJob.draft.duration ?? 4} 秒 · ${imageJob.draft.videoResolution ?? '720p'} · ${imageJob.draft.audio ? '生成聲音' : '無聲'}（請求設定）`
+                : `${dimensions(imageJob.model, imageJob.draft).width} × ${dimensions(imageJob.model, imageJob.draft).height} px（請求尺寸）`}
             </small>
             {preferences.showMoney && (
               <p className="hint">
@@ -1383,19 +1576,35 @@ export default function App() {
                     download(media.blob, media.name);
                     notify('已開始下載。iPhone 可在下載項目開啟，再儲存至「照片」。');
                   } catch {
-                    notify('圖片無法下載，請稍後再試。');
+                    notify('作品無法下載，請稍後再試。');
                   }
                 }}
               >
                 <ArrowDownToLine size={18} />
-                下載圖片
+                {isVideo(imageJob.draft) ? '下載影片' : '下載圖片'}
               </button>
-              <button className="primary full" onClick={() => void createWork(imageJob.mediaId)}>
-                <ImagePlus size={18} />
-                用這張圖開始新作品
-              </button>
+              {!isVideo(imageJob.draft) && (
+                <>
+                  <button
+                    className="primary full"
+                    onClick={() => void createWork(imageJob.mediaId)}
+                  >
+                    <ImagePlus size={18} />
+                    用這張圖開始新作品
+                  </button>
+                  <button
+                    className="secondary full"
+                    onClick={() => void createWork(imageJob.mediaId, 'video')}
+                  >
+                    <Film size={18} />
+                    用這張圖製作影片
+                  </button>
+                </>
+              )}
             </div>
-            <p className="hint">會把圖片帶入新作品，讓你接著編輯。</p>
+            {!isVideo(imageJob.draft) && (
+              <p className="hint">會把圖片帶入新作品；按下生成前不會收費。</p>
+            )}
           </div>
         </Modal>
       )}
