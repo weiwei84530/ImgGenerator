@@ -11,7 +11,7 @@ export interface ApiItem {
   cost?: number;
   code?: string;
   message?: string;
-  balance?: Balance;
+  balance?: Balance | number;
   connectionSessionUUID?: string;
 }
 export interface ApiResponse {
@@ -59,8 +59,9 @@ export async function request(key: string, task: object): Promise<ApiResponse> {
 export async function validateKey(key: string) {
   const result = await request(key, { taskType: 'authentication', apiKey: key });
   if (result.errors?.length) throw new ApiError(result.errors[0].code ?? 'authentication');
-  if (!result.data?.some((i) => i.taskType === 'authentication' && i.connectionSessionUUID))
-    throw new Error('服務尚未確認 Key 有效，請稍後再試。');
+  // REST authentication acknowledges valid credentials with an empty data array.
+  // connectionSessionUUID belongs to WebSocket sessions and is not required here.
+  if (!Array.isArray(result.data)) throw new Error('服務尚未確認 Key 有效，請稍後再試。');
 }
 export async function fetchBalance(key: string): Promise<Balance> {
   const result = await request(key, {
@@ -69,7 +70,10 @@ export async function fetchBalance(key: string): Promise<Balance> {
     operation: 'getDetails',
   });
   if (result.errors?.length) throw new ApiError(result.errors[0].code ?? 'permission');
-  const balance = result.data?.find((i) => i.balance)?.balance;
+  const rawBalance = result.data?.find((i) => i.balance !== undefined)?.balance;
+  // The live REST API also returns the USD balance as a scalar number.
+  const balance =
+    typeof rawBalance === 'number' ? { amount: rawBalance, currency: 'USD' } : rawBalance;
   if (!balance || !Number.isFinite(balance.amount) || balance.currency !== 'USD')
     throw new Error('目前無法讀取餘額。');
   return {

@@ -54,7 +54,7 @@ npm run test:e2e
 - ZIP 匯出限制為圖片合計 240 MB；還原上限為壓縮檔 250 MB、解壓資料 500 MB。大圖備份仍可能受手機記憶體限制，超過上限時請先下載重要圖片，再分批整理作品。
 - 本機已保存的圖片可在已開啟網頁中離線查看；未提供 Service Worker，因此不保證離線重新載入整個網站。
 
-Runware 參數依 [Nano Banana 2](https://runware.ai/docs/models/google-nano-banana-2)、[GPT Image 2](https://runware.ai/docs/models/openai-gpt-image-2)、[非同步任務](https://runware.ai/docs/platform/task-polling) 與 [帳戶查詢](https://runware.ai/docs/platform/account-management) 官方文件實作。文件核對日期：2026-09-12。
+Runware 參數依 [Nano Banana 2](https://runware.ai/docs/models/google-nano-banana-2)、[GPT Image 2](https://runware.ai/docs/models/openai-gpt-image-2)、[非同步任務](https://runware.ai/docs/platform/task-polling) 與 [帳戶查詢](https://runware.ai/docs/platform/account-management) 官方文件實作。驗證與餘額解析另依真實 REST 回應核對：成功驗證可回傳空的 `data`，餘額支援 USD 數值與包含幣別的物件格式。最近核對日期：2026-09-15。
 
 ## 部署
 
@@ -66,4 +66,6 @@ GitHub Actions 在 `main` 通過型別檢查、單元測試、瀏覽器流程測
 
 自動化流程涵蓋 Key 保存／更換、金額顯示偏好、多模型與照片修改請求、部分失敗、斷線後原任務查詢、下載、新作品帶入照片、備份／還原與刪除。Chromium 與 WebKit 使用手機尺寸模擬，並非真實 iPhone 或 Android。
 
-尚須用實際 Runware Key 與明確測試預算完成：真實生成品質、照片修改效果、實際帳戶餘額權限、長時間背景切換與服務商任務保存期限。模擬 API 測試不代表這些項目已通過。已以刻意無效的 Key 實測瀏覽器可直連並讀取 Runware 的驗證錯誤回應，未進行付費生成。
+2026-09-15 已使用真實 Runware API 驗證有效／無效 Key、餘額顯示與重新開啟。透過 Chromium 手機模擬，兩個模型各完成一次文字生圖與一次上傳參考圖修改，並確認下載、帶圖開新作品、瀏覽器關閉後的保存、已載入頁面的離線看圖及 ZIP 匯出。修改範例保留杯子與花朵，將桌面換色；這是少量功能驗證，不代表所有照片的修改品質。WebKit 手機模擬另通過真實 Key 驗證及上述作品備份還原。
+
+真實 iPhone／Android、長時間背景切換、服務商任務保存期限及其他帳戶的餘額權限尚未驗證。模擬 API 測試與桌面瀏覽器模擬不代表這些項目已通過。

@@ -86,15 +86,13 @@ async function mockRunware(
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (task.taskType === 'authentication') {
       if (task.apiKey === 'bad-key') return reply({ errors: [{ code: 'invalidApiKey' }] });
-      return reply({
-        data: [{ taskType: 'authentication', connectionSessionUUID: 'test-connection' }],
-      });
+      return reply({ data: [] });
     }
     if (task.taskType === 'accountManagement')
       return reply(
         options.badBalance
           ? { errors: [{ code: 'forbidden' }] }
-          : { data: [{ balance: { amount: 12.34, currency: 'USD' } }] },
+          : { data: [{ taskType: 'accountManagement', balance: 12.34 }] },
       );
     if (task.taskType === 'imageInference') {
       submitted.push(task);
