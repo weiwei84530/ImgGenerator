@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initialPreferences } from '../src/preferences';
+import { calculateModelEstimate } from '../src/pricing';
 import { buildRequest, dimensions } from '../src/models';
 import { newDraft, type Job, type Work } from '../src/types';
 import {
@@ -24,6 +25,40 @@ describe('preferences', () => {
     expect(initialPreferences('{"showMoney":true}', '?costs=hidden').showMoney).toBe(true);
     expect(initialPreferences('{"showMoney":false}', '').showMoney).toBe(false);
     expect(initialPreferences('broken', '?costs=hidden').showMoney).toBe(false);
+    expect(initialPreferences(null, '').balanceLimit).toBe(20);
+    expect(initialPreferences('{"showMoney":true}', '').balanceLimit).toBe(20);
+    expect(initialPreferences('{"showMoney":true,"balanceLimit":35}', '').balanceLimit).toBe(35);
+  });
+});
+describe('pricing estimates', () => {
+  it('uses exact catalog rates and refuses token-priced estimates', () => {
+    const draft = newDraft();
+    draft.models = ['banana'];
+    draft.prompt = '花園中的貓咪';
+    expect(
+      calculateModelEstimate('banana', draft, [
+        { amount: 0.06895, unit: 'output', label: '1K' },
+        { amount: 0.00028, unit: 'inputImage' },
+      ]),
+    ).toBeCloseTo(0.06895);
+    expect(calculateModelEstimate('gpt', draft, [])).toBeNull();
+    expect(calculateModelEstimate('banana', { ...draft, googleSearch: true }, [])).toBeNull();
+  });
+  it('distinguishes video rates with and without audio', () => {
+    const draft = {
+      ...newDraft(),
+      kind: 'video' as const,
+      models: ['kling'] as ['kling'],
+      duration: 4,
+      videoResolution: '720p' as const,
+      audio: false,
+    };
+    const rates = [
+      { amount: 0.084, unit: 'durationSecond', label: '720p · no audio' },
+      { amount: 0.126, unit: 'durationSecond', label: '720p · audio' },
+    ];
+    expect(calculateModelEstimate('kling', draft, rates)).toBeCloseTo(0.336);
+    expect(calculateModelEstimate('kling', { ...draft, audio: true }, rates)).toBeCloseTo(0.504);
   });
 });
 describe('Runware request capabilities', () => {

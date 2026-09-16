@@ -47,6 +47,7 @@ export interface Media {
 }
 export interface Preferences {
   showMoney: boolean;
+  balanceLimit: number;
 }
 export interface Balance {
   amount: number;

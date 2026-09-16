@@ -26,7 +26,9 @@ test('rapid clicks submit once and reset removes saved data and credentials', as
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   expect(api.submitted).toHaveLength(2);
   await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
   await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
+  await openSettingsSection(page, '作品與備份');
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBeNull();
@@ -83,6 +85,22 @@ async function mockRunware(
   await page.route('https://im.runware.ai/test-*.mp4', (route) =>
     route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/sample.mp4' }),
   );
+  await page.route('https://content.runware.ai/models/*/pricing', (route) => {
+    const air = decodeURIComponent(route.request().url().split('/models/')[1].split('/pricing')[0]);
+    const pricingRates =
+      air === 'google:4@3'
+        ? [
+            { amount: 0.06895, unit: 'output', label: '1K' },
+            { amount: 0.10255, unit: 'output', label: '2K' },
+            { amount: 0.00028, unit: 'inputImage' },
+          ]
+        : [];
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ air, pricingRates }),
+    });
+  });
   await page.route('https://api.runware.ai/v1', async (route) => {
     const [task] = route.request().postDataJSON() as Task[];
     const reply = (body: unknown) =>
@@ -158,6 +176,10 @@ async function newWork(page: Page) {
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await page.getByLabel('描述你的想法').fill('一隻貓咪在溫柔的花園中');
 }
+async function openSettingsSection(page: Page, name: string) {
+  const summary = page.locator('summary').filter({ hasText: name });
+  if ((await summary.getAttribute('aria-expanded')) !== 'true') await summary.click();
+}
 
 test('category defaults remember parameters while new works keep prompts and references empty', async ({
   page,
@@ -168,19 +190,20 @@ test('category defaults remember parameters while new works keep prompts and ref
   await page.getByLabel('移除 GPT Image 2').click();
   await page.getByLabel('增加張數').click();
   await page.getByRole('button', { name: '方形', exact: false }).click();
-  await page.getByRole('button', { name: '主選單' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /製作影片/ }).click();
   await expect(page.getByLabel('移除 Kling 3.0 Standard')).toBeVisible();
   await expect(page.getByLabel('生成聲音', { exact: true })).not.toBeChecked();
   await page.getByLabel('生成聲音', { exact: true }).check();
   await page.getByLabel('影片長度').selectOption('8');
   await page.reload();
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await expect(page.getByLabel('移除 Nano Banana 2')).toBeVisible();
   await expect(page.getByLabel('移除 GPT Image 2')).toHaveCount(0);
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   await expect(page.locator('.stepper')).toContainText('2 張');
-  await page.getByRole('button', { name: '主選單' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /製作影片/ }).click();
   await expect(page.getByLabel('影片長度')).toHaveValue('8');
   await expect(page.getByLabel('生成聲音', { exact: true })).toBeChecked();
@@ -195,7 +218,7 @@ test('expanded image models generate alongside existing models and pass through 
   await newWork(page);
   for (const model of ['FLUX.2 Pro', 'Seedream 5.0 Pro']) {
     await page.getByRole('button', { name: '新增模型' }).click();
-    await page.getByRole('button', { name: model, exact: true }).click();
+    await page.getByLabel('選擇新增模型').selectOption({ label: model });
   }
   await page.getByLabel('加入照片', { exact: true }).setInputFiles({
     name: 'photo.png',
@@ -253,6 +276,7 @@ test('video first-frame generation plays and downloads, hides costs, and survive
   expect((await downloadPromise).suggestedFilename()).toMatch(/\.mp4$/);
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '作品與備份');
   const backup = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await (await backup).path();
@@ -275,11 +299,12 @@ test('video partial failures retry only the failed model and reload only polls t
   await setup(page);
   await page.getByRole('button', { name: /製作影片/ }).click();
   await page.getByRole('button', { name: '新增模型' }).click();
-  await page.getByRole('button', { name: 'Veo 3.1 Fast', exact: true }).click();
+  await page.getByLabel('選擇新增模型').selectOption({ label: 'Veo 3.1 Fast' });
   await page.getByLabel('描述你的想法').fill('一朵花在微風中搖動');
   await page.getByRole('button', { name: '開始生成影片' }).click();
   await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
   await page.reload();
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
   await page.getByRole('tab', { name: /本次作品/ }).click();
@@ -305,10 +330,11 @@ test('first-use validation, saved key, replacement, and hidden money preference'
   await page.reload();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
   await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
   const toggle = page.getByRole('switch', { name: /顯示餘額與費用/ });
   await expect(toggle).not.toBeChecked();
   await toggle.check();
-  await page.getByText('更換 API Key', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
   await page.getByLabel('Runware API Key', { exact: true }).fill('replacement-test-key');
   await page.getByRole('button', { name: '驗證並更換 Key' }).click();
   await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
@@ -349,7 +375,7 @@ test('two models, two photos each, original references, download and new work', 
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   expect(api.submitted).toHaveLength(4);
-  await page.getByRole('button', { name: '主選單' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(2);
 });
@@ -380,6 +406,7 @@ test('interrupted submission reloads by polling the same task without another ch
   await expect.poll(() => api.polled.length).toBeGreaterThan(0);
   expect(api.submitted).toHaveLength(1);
   expect(api.polled[0].taskUUID).toBe(api.submitted[0].taskUUID);
+  await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
   await page.getByRole('tab', { name: /本次作品/ }).click();
@@ -398,6 +425,7 @@ test('money stays hidden in editor, results and full view, then restores', async
   await expect(page.getByRole('dialog').getByText(/US\$/)).toHaveCount(0);
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
   await page.getByRole('switch', { name: /顯示餘額與費用/ }).check();
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await expect(page.getByText(/實際費用 US\$/)).toHaveCount(2);
@@ -413,6 +441,7 @@ test('backup restore, deletion, key removal and offline images', async ({ page }
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '作品與備份');
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await downloaded;
@@ -422,6 +451,7 @@ test('backup restore, deletion, key removal and offline images', async ({ page }
   await expect(page.getByRole('status')).toContainText('已清除作品');
   await page.getByLabel('還原備份', { exact: true }).setInputFiles(path!);
   await expect(page.getByRole('status')).toContainText('已還原 1 份作品');
+  await openSettingsSection(page, '服務連線');
   await page.getByRole('button', { name: '移除這台裝置的 Key' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   await page.getByLabel('Runware API Key', { exact: true }).fill('test-key-never-real');
@@ -439,6 +469,9 @@ test('mobile layout fits and unavailable balance is never shown as zero', async 
 }, testInfo) => {
   await mockRunware(page, { badBalance: true });
   await page.goto('/');
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(
+    true,
+  );
   await page.screenshot({ path: testInfo.outputPath('welcome.png'), fullPage: true });
   await setup(page);
   await expect(page.getByLabel('重新查詢餘額')).toContainText('暫時無法讀取');
@@ -448,4 +481,73 @@ test('mobile layout fits and unavailable balance is never shown as zero', async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('browser back follows screens and closes overlays', async ({ page }) => {
+  await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  await page.goBack();
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+
+  await page.getByLabel('設定', { exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '畫室設定' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog', { name: '畫室設定' })).toHaveCount(0);
+
+  await newWork(page);
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await page.getByRole('button', { name: /檢視 Nano Banana/ }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('existing works open results and local collections stay focused', async ({ page }) => {
+  await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await expect(page.getByRole('button', { name: '開始新作品' })).toHaveCount(0);
+  await page.locator('.work-open').first().click();
+  await expect(page.getByRole('tab', { name: /本次作品/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByText('喜歡的作品記得下載下來，避免遺失。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '繼續這份作品' })).toHaveCount(0);
+});
+
+test('balance limit persists and advanced settings only appear when relevant', async ({ page }) => {
+  await mockRunware(page);
+  await setup(page);
+  await page.getByLabel('設定', { exact: true }).click();
+  await expect(page.getByLabel('餘額顯示上限')).toHaveValue('20');
+  await page.getByLabel('餘額顯示上限').fill('35');
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+  await page.reload();
+  await page.getByLabel('設定', { exact: true }).click();
+  await expect(page.getByLabel('餘額顯示上限')).toHaveValue('35');
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+
+  await newWork(page);
+  await page.getByLabel('移除 Nano Banana 2').click();
+  await page.getByLabel('移除 GPT Image 2').click();
+  await page.getByRole('button', { name: '新增模型' }).click();
+  await page.getByLabel('選擇新增模型').selectOption({ label: 'FLUX.2 Pro' });
+  await expect(page.getByText('進階設定', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '新增模型' }).click();
+  await page.getByLabel('選擇新增模型').selectOption({ label: 'Seedream 5.0 Pro' });
+  await expect(page.getByText('進階設定', { exact: true })).toBeVisible();
+});
+
+test('phone landscape shows the portrait prompt', async ({ page }) => {
+  await mockRunware(page);
+  await setup(page);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.getByText('請將手機轉回直向')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText('請將手機轉回直向')).toBeHidden();
 });

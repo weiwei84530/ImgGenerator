@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
-  ArrowLeft,
   ArrowRight,
   Check,
   ChevronDown,
@@ -22,6 +21,7 @@ import {
   X,
   Film,
   Play,
+  Smartphone,
 } from 'lucide-react';
 import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
 import { exportBackup, importBackup } from './backup';
@@ -37,6 +37,12 @@ import {
   savePreferences,
 } from './preferences';
 import { fetchBalance, keyTag, validateKey } from './runware';
+import { estimateDraftCost } from './pricing';
+import googleLogo from './assets/providers/google.png';
+import openaiLogo from './assets/providers/openai.png';
+import bflLogo from './assets/providers/bfl.png';
+import bytedanceLogo from './assets/providers/bytedance.png';
+import klingLogo from './assets/providers/kling.png';
 import {
   isActive,
   isVideo,
@@ -49,6 +55,7 @@ import {
 } from './types';
 
 const REPO = 'https://github.com/weiwei84530/ImgGenerator';
+const STUDIO = 'https://weiweistudio.com';
 const money = (value: number) => `US$ ${value.toFixed(4).replace(/0{1,2}$/, '')}`;
 const date = (value: number) =>
   new Intl.DateTimeFormat('zh-TW', {
@@ -58,6 +65,36 @@ const date = (value: number) =>
     minute: '2-digit',
   }).format(value);
 type Notify = (message: string) => void;
+type Screen = 'home' | 'work' | 'library';
+type WorkTab = 'edit' | 'results';
+interface NavigationState {
+  studio: true;
+  screen: Screen;
+  workId?: string;
+  workTab?: WorkTab;
+  overlay?: 'settings' | 'viewer';
+  jobId?: string;
+}
+
+const providerLogos = {
+  banana: googleLogo,
+  gpt: openaiLogo,
+  flux: bflLogo,
+  seedream: bytedanceLogo,
+  kling: klingLogo,
+  seedance: bytedanceLogo,
+  veo: googleLogo,
+} as const;
+
+const isSystemTitle = (title: string) => ['還沒命名的作品', '從照片開始的新作品'].includes(title);
+
+function ModelMark({ model }: { model: keyof typeof providerLogos }) {
+  return (
+    <span className={`model-icon ${model}`}>
+      <img src={providerLogos[model]} alt="" />
+    </span>
+  );
+}
 
 function LocalImage({
   id,
@@ -171,24 +208,6 @@ function Modal({
   );
 }
 
-function Privacy() {
-  return (
-    <div className="privacy">
-      <ShieldCheck size={21} />
-      <div>
-        <strong>你的作品，留在你的裝置</strong>
-        <p>
-          本站不設後端，也不收集你的 Key、照片或描述。生成時，內容會由瀏覽器直接傳送至 Runware
-          及必要的上游服務，由服務商處理與依其政策保存。
-        </p>
-        <a href={REPO} target="_blank" rel="noreferrer">
-          查看公開原始碼 <ExternalLink size={13} />
-        </a>
-      </div>
-    </div>
-  );
-}
-
 function KeyForm({
   onSuccess,
   notify,
@@ -264,47 +283,44 @@ function KeyForm({
 function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; notify: Notify }) {
   return (
     <div className="welcome">
-      <div className="eyebrow">
-        <span /> A LITTLE SPACE FOR IDEAS
-      </div>
-      <h1>
-        把腦海裡的美好，
-        <br />
-        <em>慢慢畫出來。</em>
-      </h1>
-      <p className="intro">
-        一句話、一張照片，
-        <br />
-        讓不同 AI 為你帶來不同的驚喜。
-      </p>
-      <div className="paper-art" aria-hidden="true">
-        <div className="art-card art-back">
-          <div className="art-sun" />
-          <div className="art-hill" />
-        </div>
-        <div className="art-card art-front">
-          <div className="art-flower">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <b />
+      <div className="welcome-hero">
+        <div>
+          <div className="eyebrow">
+            <span /> A LITTLE SPACE FOR IDEAS
           </div>
-          <span>make room for wonder.</span>
+          <h1>
+            把美好，<em>慢慢畫出來。</em>
+          </h1>
+          <p className="intro">用一句話或一張照片，開始創作。</p>
         </div>
-        <div className="art-spark">✧</div>
+        <div className="paper-art" aria-hidden="true">
+          <div className="art-card art-back">
+            <div className="art-sun" />
+            <div className="art-hill" />
+          </div>
+          <div className="art-card art-front">
+            <div className="art-flower">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <b />
+            </div>
+          </div>
+        </div>
       </div>
       <section className="card setup-card">
         <div className="section-kicker">只需設定一次</div>
         <h2>設定服務</h2>
-        <p className="muted">帶上你的 Key，剩下的交給想像力。</p>
         <KeyForm onSuccess={onSuccess} notify={notify} />
         <a className="small-link" href="https://runware.ai" target="_blank" rel="noreferrer">
           前往 Runware 取得 API Key <ExternalLink size={13} />
         </a>
       </section>
-      <Privacy />
+      <p className="welcome-privacy">
+        <ShieldCheck size={16} /> Key 與作品保存在這台裝置；生成內容會傳送至 Runware。
+      </p>
     </div>
   );
 }
@@ -333,6 +349,7 @@ function Workspace({
   jobs,
   apiKey,
   showMoney,
+  initialTab,
   notify,
   openImage,
 }: {
@@ -340,18 +357,20 @@ function Workspace({
   jobs: Job[];
   apiKey: string;
   showMoney: boolean;
+  initialTab: WorkTab;
   notify: Notify;
   openImage: (job: Job) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(work.draft);
   const latestDraft = useRef(draft);
-  const [tab, setTab] = useState<'edit' | 'results'>('edit');
+  const [tab, setTab] = useState<WorkTab>(initialTab);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [addModel, setAddModel] = useState(false);
   const submitLock = useRef(false);
   const latestSave = useRef<Promise<void>>(Promise.resolve());
   const [saveError, setSaveError] = useState(false);
+  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
   const active = jobs.some(isActive);
   const total = draft.models.length * draft.count;
   const video = isVideo(draft);
@@ -359,6 +378,21 @@ function Workspace({
   const mediaName = video ? '影片' : '圖片';
   const availableModels = modelsFor(video ? 'video' : 'image');
   const maxRefs = video ? 1 : 4;
+  const advancedModels = draft.models.filter((model) =>
+    ['banana', 'gpt', 'seedream', 'kling'].includes(model),
+  );
+  useEffect(() => {
+    let live = true;
+    setEstimatedCost(null);
+    if (showMoney && draft.models.length) {
+      void estimateDraftCost(draft).then((value) => {
+        if (live) setEstimatedCost(value);
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [draft, showMoney]);
   const update = (patch: Partial<Draft>) => {
     const next = { ...latestDraft.current, ...patch };
     if (isVideo(next) && next.videoResolution === '1080p' && !supports1080(next)) {
@@ -415,11 +449,6 @@ function Workspace({
   };
   return (
     <>
-      <div className="page-heading">
-        <div className="eyebrow">YOUR CREATIVE SPACE</div>
-        <h1>{video ? '讓這一刻，動起來。' : '今天，想畫些什麼？'}</h1>
-        <p className="muted">一個想法，看看不同 AI 的詮釋。</p>
-      </div>
       <div className="tabs" role="tablist" aria-label="工作區">
         <button role="tab" aria-selected={tab === 'edit'} onClick={() => setTab('edit')}>
           <Sparkles size={18} />
@@ -527,14 +556,14 @@ function Workspace({
           <section className="card">
             <div className="section-row">
               <h2 className="section-label">
-                <span className="step">02</span>一起創作的 AI
+                <span className="step">02</span>選擇創作 AI
               </h2>
               <span className="subtle-pill">已選 {draft.models.length} 個</span>
             </div>
             <div className="model-list">
               {draft.models.map((model) => (
                 <div className="model-card" key={model}>
-                  <span className={`model-icon ${model}`}>{models[model].letter}</span>
+                  <ModelMark model={model} />
                   <div>
                     <strong>{models[model].name}</strong>
                     <small>{models[model].note}</small>
@@ -550,27 +579,42 @@ function Workspace({
               ))}
             </div>
             {draft.models.length < availableModels.length && (
-              <button className="add-model" onClick={() => setAddModel(!addModel)}>
-                <Plus size={17} />
-                新增模型
-              </button>
-            )}
-            {addModel && draft.models.length < availableModels.length && (
-              <div className="model-picker">
-                {availableModels
-                  .filter((m) => !draft.models.includes(m))
-                  .map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => {
-                        update({ models: [...draft.models, m] });
-                        setAddModel(false);
-                      }}
-                    >
-                      <Plus size={16} />
-                      {models[m].name}
-                    </button>
-                  ))}
+              <div className="add-model-row">
+                {addModel ? (
+                  <select
+                    aria-label="選擇新增模型"
+                    defaultValue=""
+                    autoFocus
+                    onBlur={(event) => {
+                      if (!event.currentTarget.value) setAddModel(false);
+                    }}
+                    onChange={(event) => {
+                      const model = event.target.value as (typeof availableModels)[number];
+                      if (model) update({ models: [...draft.models, model] });
+                      setAddModel(false);
+                    }}
+                  >
+                    <option value="" disabled>
+                      選擇模型
+                    </option>
+                    {availableModels
+                      .filter((model) => !draft.models.includes(model))
+                      .map((model) => (
+                        <option value={model} key={model}>
+                          {models[model].name}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <span>新增模型</span>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={addModel ? '取消新增模型' : '新增模型'}
+                  onClick={() => setAddModel(!addModel)}
+                >
+                  {addModel ? <X size={18} /> : <Plus size={20} />}
+                </button>
               </div>
             )}
             <p className="hint">每個 AI 都會使用同一段描述與相同照片。</p>
@@ -687,90 +731,85 @@ function Workspace({
                 </button>
               </div>
             </div>
-            <details className="advanced">
-              <summary>
-                <Settings2 size={17} />
-                進階設定
-                <ChevronDown size={17} />
-              </summary>
-              <p className="hint">
-                {video
-                  ? '照片會作為起始畫面；不同模型的動作與聲音可能不同。'
-                  : '依各模型能力設定；尺寸略有差異，圖片不會被裁切。'}
-              </p>
-              {draft.models.map((model) => (
-                <div className="advanced-model" key={model}>
-                  <strong>{models[model].name}</strong>
-                  <small>
-                    {video && draft.refs.length
-                      ? '依照片決定尺寸'
-                      : `輸出 ${dimensions(model, draft).width} × ${dimensions(model, draft).height} px`}{' '}
-                    · {video ? 'MP4' : 'PNG'}
-                  </small>
-                  {model === 'banana' ? (
-                    <label className="check-row">
-                      <input
-                        type="checkbox"
-                        checked={draft.googleSearch}
-                        onChange={(e) => update({ googleSearch: e.target.checked })}
-                      />
-                      參考網路資料生成圖片
-                    </label>
-                  ) : model === 'gpt' ? (
-                    <>
-                      <label className="setting-row">
-                        繪製品質
-                        <select
-                          value={draft.gptQuality}
-                          onChange={(e) =>
-                            update({ gptQuality: e.target.value as Draft['gptQuality'] })
-                          }
-                        >
-                          <option value="auto">自動</option>
-                          <option value="low">快速</option>
-                          <option value="medium">標準</option>
-                          <option value="high">精細</option>
-                        </select>
+            {advancedModels.length > 0 && (
+              <details className="advanced">
+                <summary>
+                  <Settings2 size={17} />
+                  進階設定
+                  <ChevronDown size={17} />
+                </summary>
+                {advancedModels.map((model) => (
+                  <div className="advanced-model" key={model}>
+                    <strong>{models[model].name}</strong>
+                    <small>
+                      {video && draft.refs.length
+                        ? '依照片決定尺寸'
+                        : `輸出 ${dimensions(model, draft).width} × ${dimensions(model, draft).height} px`}{' '}
+                      · {video ? 'MP4' : 'PNG'}
+                    </small>
+                    {model === 'banana' ? (
+                      <label className="check-row">
+                        <input
+                          type="checkbox"
+                          checked={draft.googleSearch}
+                          onChange={(e) => update({ googleSearch: e.target.checked })}
+                        />
+                        參考網路資料生成圖片
                       </label>
-                      <label className="setting-row">
-                        背景
-                        <select
-                          value={draft.gptBackground}
-                          onChange={(e) =>
-                            update({ gptBackground: e.target.value as Draft['gptBackground'] })
-                          }
-                        >
-                          <option value="auto">自動</option>
-                          <option value="opaque">一般背景</option>
-                          <option value="transparent">透明背景</option>
-                        </select>
+                    ) : model === 'gpt' ? (
+                      <>
+                        <label className="setting-row">
+                          繪製品質
+                          <select
+                            value={draft.gptQuality}
+                            onChange={(e) =>
+                              update({ gptQuality: e.target.value as Draft['gptQuality'] })
+                            }
+                          >
+                            <option value="auto">自動</option>
+                            <option value="low">快速</option>
+                            <option value="medium">標準</option>
+                            <option value="high">精細</option>
+                          </select>
+                        </label>
+                        <label className="setting-row">
+                          背景
+                          <select
+                            value={draft.gptBackground}
+                            onChange={(e) =>
+                              update({ gptBackground: e.target.value as Draft['gptBackground'] })
+                            }
+                          >
+                            <option value="auto">自動</option>
+                            <option value="opaque">一般背景</option>
+                            <option value="transparent">透明背景</option>
+                          </select>
+                        </label>
+                      </>
+                    ) : model === 'seedream' ? (
+                      <label className="check-row">
+                        <input
+                          type="checkbox"
+                          checked={draft.seedreamThinking ?? true}
+                          onChange={(e) => update({ seedreamThinking: e.target.checked })}
+                        />
+                        加強構思（可能需要更多時間）
                       </label>
-                    </>
-                  ) : model === 'seedream' ? (
-                    <label className="check-row">
-                      <input
-                        type="checkbox"
-                        checked={draft.seedreamThinking ?? true}
-                        onChange={(e) => update({ seedreamThinking: e.target.checked })}
-                      />
-                      加強構思（可能需要更多時間）
-                    </label>
-                  ) : model === 'kling' ? (
-                    <label className="setting-row">
-                      不想出現的內容
-                      <input
-                        value={draft.klingNegativePrompt ?? ''}
-                        maxLength={2500}
-                        onChange={(e) => update({ klingNegativePrompt: e.target.value })}
-                        placeholder="例如：鏡頭晃動"
-                      />
-                    </label>
-                  ) : (
-                    <p className="hint">使用上方共用設定即可。</p>
-                  )}
-                </div>
-              ))}
-            </details>
+                    ) : model === 'kling' ? (
+                      <label className="setting-row">
+                        不想出現的內容
+                        <input
+                          value={draft.klingNegativePrompt ?? ''}
+                          maxLength={2500}
+                          onChange={(e) => update({ klingNegativePrompt: e.target.value })}
+                          placeholder="例如：鏡頭晃動"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                ))}
+              </details>
+            )}
           </section>
           <div className="submit-bar">
             <div className="submit-summary">
@@ -779,7 +818,9 @@ function Workspace({
                 <strong>{draft.count}</strong> {unit} <span className="times">=</span>{' '}
                 <strong>{total}</strong> {unit}作品
               </span>
-              {showMoney && <small>預估費用：依實際用量計費，送出前無法精準估價。</small>}
+              {showMoney && estimatedCost !== null && (
+                <small>預估費用 {money(estimatedCost)} · 完成後依實際用量計費</small>
+              )}
             </div>
             <button
               className="primary full generate"
@@ -823,16 +864,11 @@ function Workspace({
           ) : (
             <>
               <div className="results-heading">
-                <h2>這次的創作旅程</h2>
+                <h2>本次作品</h2>
                 <span>
                   {jobs.filter((j) => j.status === 'succeeded').length} {unit}作品
                 </span>
               </div>
-              <p className="hint">
-                {video
-                  ? '影片通常需要幾分鐘。完成後點一下即可播放；重新開啟會查詢原任務。'
-                  : '圖片會分別出現。點一下，放大欣賞或接著改圖。'}
-              </p>
               {[...new Set(jobs.map((j) => j.batchId))].reverse().map((batch, index) => (
                 <section className="batch" key={batch}>
                   <div className="batch-heading">
@@ -935,12 +971,8 @@ function Workspace({
               ))}
               <div className="local-note">
                 <ShieldCheck size={17} />
-                作品已完成本機保存後才會顯示在這裡。
+                喜歡的作品記得下載下來，避免遺失。
               </div>
-              <button className="secondary full" onClick={() => setTab('edit')}>
-                <Plus size={18} />
-                繼續這份作品
-              </button>
             </>
           )}
         </div>
@@ -952,7 +984,8 @@ function Workspace({
 export default function App() {
   const [apiKey, setApiKey] = useState(readKey);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
-  const [screen, setScreen] = useState<'home' | 'work' | 'library'>('home');
+  const [screen, setScreen] = useState<Screen>('home');
+  const [workTab, setWorkTab] = useState<WorkTab>('edit');
   const [works, setWorks] = useState<Work[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [workId, setWorkId] = useState('');
@@ -967,7 +1000,49 @@ export default function App() {
   const [storageError, setStorageError] = useState(false);
   const active = jobs.some(isActive);
   const notify = useCallback<Notify>((message) => setToast(message), []);
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
   const balanceSequence = useRef(0);
+  const applyNavigation = useCallback((state: NavigationState) => {
+    setScreen(state.screen);
+    setWorkId(state.workId ?? '');
+    setWorkTab(state.workTab ?? 'edit');
+    setSettings(state.overlay === 'settings');
+    setImageJob(
+      state.overlay === 'viewer' && state.jobId
+        ? (jobsRef.current.find((job) => job.id === state.jobId) ?? null)
+        : null,
+    );
+    window.scrollTo({ top: 0 });
+  }, []);
+  const navigate = useCallback(
+    (next: Omit<NavigationState, 'studio'>) => {
+      const state: NavigationState = { studio: true, ...next };
+      history.pushState(state, '');
+      applyNavigation(state);
+    },
+    [applyNavigation],
+  );
+  const closeOverlay = useCallback((overlay: NavigationState['overlay']) => {
+    const state = history.state as NavigationState | null;
+    if (state?.studio && state.overlay === overlay) history.back();
+    else {
+      setSettings(false);
+      setImageJob(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    const initial: NavigationState = { studio: true, screen: 'home' };
+    if (!(history.state as NavigationState | null)?.studio) history.replaceState(initial, '');
+    else applyNavigation(history.state as NavigationState);
+    const pop = (event: PopStateEvent) => {
+      const state = event.state as NavigationState | null;
+      applyNavigation(state?.studio ? state : initial);
+    };
+    window.addEventListener('popstate', pop);
+    return () => window.removeEventListener('popstate', pop);
+  }, [applyNavigation]);
   const refreshBalance = useCallback(async () => {
     if (!apiKey || !preferences.showMoney) return;
     const sequence = ++balanceSequence.current;
@@ -1059,11 +1134,8 @@ export default function App() {
     };
   }, [apiKey]);
 
-  const openWork = (work: Work) => {
-    setWorkId(work.id);
-    setScreen('work');
-    window.scrollTo({ top: 0 });
-  };
+  const openWork = (work: Work, tab: WorkTab = 'results') =>
+    navigate({ screen: 'work', workId: work.id, workTab: tab });
   const createWork = async (ref?: string, kind: WorkKind = 'image') => {
     try {
       const draft = rememberedDraft(kind);
@@ -1077,8 +1149,7 @@ export default function App() {
       };
       await saveWork(work);
       setWorks((previous) => [work, ...previous.filter((w) => w.id !== work.id)]);
-      openWork(work);
-      setImageJob(null);
+      openWork(work, 'edit');
       void navigator.storage?.persist?.().catch(() => {});
     } catch {
       notify('無法建立作品，請檢查裝置儲存空間。');
@@ -1087,7 +1158,7 @@ export default function App() {
   const current = works.find((w) => w.id === workId);
   const updateKey = (key: string) => {
     setApiKey(key);
-    setSettings(false);
+    if (settings) closeOverlay('settings');
   };
   const deleteWork = async (work: Work) => {
     if (jobs.some((j) => j.workId === work.id && isActive(j))) {
@@ -1102,7 +1173,7 @@ export default function App() {
       return;
     try {
       await removeWork(work.id);
-      if (workId === work.id) setScreen('library');
+      if (workId === work.id) navigate({ screen: 'library' });
       notify('已刪除這份作品。');
     } catch {
       notify('刪除失敗，請稍後再試。');
@@ -1111,13 +1182,15 @@ export default function App() {
 
   return (
     <main className="shell">
+      <div className="landscape-lock" role="status">
+        <Smartphone size={46} />
+        <strong>請將手機轉回直向</strong>
+        <span>直向畫面比較容易操作畫室。</span>
+      </div>
       <header className="topbar">
         <button
           className="brand"
-          onClick={() => {
-            setScreen('home');
-            window.scrollTo({ top: 0 });
-          }}
+          onClick={() => navigate({ screen: 'home' })}
           aria-label="拾光畫室首頁"
         >
           <span className="brand-symbol">
@@ -1128,13 +1201,32 @@ export default function App() {
           </span>
         </button>
         {apiKey && (
-          <button
-            className="icon-button settings-button"
-            aria-label="設定"
-            onClick={() => setSettings(true)}
-          >
-            <Settings2 size={21} />
-          </button>
+          <div className="header-tools">
+            <span className="connected" aria-label="Runware 已設定">
+              <span />
+              <b>已連線</b>
+            </span>
+            {preferences.showMoney && (
+              <MoneyBadge
+                balance={balance}
+                loading={balanceLoading}
+                refresh={() => void refreshBalance()}
+              />
+            )}
+            <button
+              className="icon-button settings-button"
+              aria-label="設定"
+              onClick={() =>
+                navigate({
+                  screen,
+                  ...(workId ? { workId, workTab } : {}),
+                  overlay: 'settings',
+                })
+              }
+            >
+              <Settings2 size={21} />
+            </button>
+          </div>
         )}
       </header>
       {offline && (
@@ -1156,26 +1248,6 @@ export default function App() {
         </div>
       ) : (
         <>
-          <div className="utility-row">
-            {screen !== 'home' ? (
-              <button className="back-link" onClick={() => setScreen('home')}>
-                <ArrowLeft size={17} />
-                主選單
-              </button>
-            ) : (
-              <span className="connected">
-                <span />
-                Runware 已設定
-              </span>
-            )}
-            {preferences.showMoney && (
-              <MoneyBadge
-                balance={balance}
-                loading={balanceLoading}
-                refresh={() => void refreshBalance()}
-              />
-            )}
-          </div>
           {screen === 'home' && (
             <>
               <div className="page-heading home-heading">
@@ -1193,7 +1265,6 @@ export default function App() {
                 disabled={storageError}
               >
                 <div>
-                  <span className="feature-label">一起創作</span>
                   <h2>製作圖片</h2>
                   <p>
                     把文字變成畫面，
@@ -1216,7 +1287,6 @@ export default function App() {
                 disabled={storageError}
               >
                 <div>
-                  <span className="feature-label">讓畫面動起來</span>
                   <h2>製作影片</h2>
                   <p>
                     描述一段動作，
@@ -1224,15 +1294,16 @@ export default function App() {
                     或讓喜歡的照片成為短片。
                   </p>
                   <span className="create-cta">
-                    開始製作 <ArrowRight size={19} />
+                    開始創作 <ArrowRight size={19} />
                   </span>
                 </div>
-                <div className="video-art" aria-hidden="true">
-                  <Film size={62} />
-                  <Play size={24} />
+                <div className="mini-art video-mini-art" aria-hidden="true">
+                  <span className="mini-sun" />
+                  <span className="mini-hill" />
+                  <Sparkles />
                 </div>
               </button>
-              <button className="library-link" onClick={() => setScreen('library')}>
+              <button className="library-link" onClick={() => navigate({ screen: 'library' })}>
                 <span className="library-icon">
                   <FolderHeart size={25} />
                 </span>
@@ -1250,11 +1321,8 @@ export default function App() {
                 <section className="recent">
                   <div className="section-row">
                     <h2>接著上次的靈感</h2>
-                    <button className="text-button" onClick={() => setScreen('library')}>
-                      查看全部
-                    </button>
                   </div>
-                  {works.slice(0, 2).map((work) => (
+                  {works.slice(0, 3).map((work) => (
                     <button className="recent-work" key={work.id} onClick={() => openWork(work)}>
                       <span className="recent-thumbnail">
                         {jobs.find((j) => j.workId === work.id && j.mediaId)?.mediaId ? (
@@ -1267,7 +1335,9 @@ export default function App() {
                         )}
                       </span>
                       <div>
-                        <strong>{work.title}</strong>
+                        <strong className={isSystemTitle(work.title) ? 'system-title' : undefined}>
+                          {work.title}
+                        </strong>
                         <small>{date(work.updatedAt)}</small>
                       </div>
                       <ArrowRight size={17} />
@@ -1277,40 +1347,43 @@ export default function App() {
               )}
               <div className="local-note">
                 <ShieldCheck size={18} />
-                <span>作品保存在這台裝置，記得下載喜歡的圖片與影片。</span>
+                <span>作品只暫存在這個瀏覽器；喜歡的作品請下載，以免遺失。</span>
               </div>
             </>
           )}
           {screen === 'work' && current && (
             <Workspace
-              key={current.id}
+              key={`${current.id}:${workTab}`}
               work={current}
               jobs={jobs.filter((j) => j.workId === current.id)}
               apiKey={apiKey}
               showMoney={preferences.showMoney}
+              initialTab={workTab}
               notify={notify}
-              openImage={setImageJob}
+              openImage={(job) =>
+                navigate({
+                  screen: 'work',
+                  workId: current.id,
+                  workTab,
+                  overlay: 'viewer',
+                  jobId: job.id,
+                })
+              }
             />
           )}
           {screen === 'work' && !current && (
             <div className="empty-state">
               <h2>這份作品已移除</h2>
-              <button className="secondary" onClick={() => setScreen('library')}>
+              <button className="secondary" onClick={() => navigate({ screen: 'library' })}>
                 回到我的作品
               </button>
             </div>
           )}
           {screen === 'library' && (
             <>
-              <div className="page-heading">
-                <div className="eyebrow">YOUR LITTLE COLLECTION</div>
+              <div className="page-heading compact-heading">
                 <h1>我的作品</h1>
-                <p className="muted">每一個想法，都留在這裡。</p>
               </div>
-              <button className="primary full" onClick={() => void createWork()}>
-                <Plus size={19} />
-                開始新作品
-              </button>
               {!works.length ? (
                 <div className="empty-state">
                   <FolderHeart size={40} />
@@ -1331,7 +1404,9 @@ export default function App() {
                             </div>
                           )}
                           <div>
-                            <h2>{work.title}</h2>
+                            <h2 className={isSystemTitle(work.title) ? 'system-title' : undefined}>
+                              {work.title}
+                            </h2>
                             <p>{date(work.updatedAt)}</p>
                             <span>
                               {
@@ -1363,7 +1438,9 @@ export default function App() {
         </>
       )}
       <footer>
-        <span>留一點空間，給想像。</span>
+        <a href={STUDIO} target="_blank" rel="noreferrer">
+          weiweistudio.com <ExternalLink size={12} />
+        </a>
         <a href={REPO} target="_blank" rel="noreferrer">
           GitHub <ExternalLink size={12} />
         </a>
@@ -1381,165 +1458,222 @@ export default function App() {
           title="畫室設定"
           notice={toast}
           close={() => {
-            if (!dataBusy) setSettings(false);
+            if (!dataBusy) closeOverlay('settings');
           }}
         >
           <div className="modal-content">
-            <section>
-              <h3>顯示偏好</h3>
-              <label className="toggle-row">
-                <span>
-                  顯示餘額與費用<small>包含預估費用與實際生成費用</small>
-                </span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={preferences.showMoney}
-                  onChange={(e) => setPreferences({ showMoney: e.target.checked })}
+            {preferences.showMoney && (
+              <section className="balance-panel" aria-label="餘額使用進度">
+                <div className="balance-panel-heading">
+                  <div>
+                    <span>目前餘額</span>
+                    <strong>{balance ? money(balance.amount) : '暫時無法讀取'}</strong>
+                  </div>
+                  <label>
+                    顯示上限
+                    <span>
+                      US$
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={preferences.balanceLimit}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (Number.isFinite(value) && value > 0)
+                            setPreferences({ ...preferences, balanceLimit: value });
+                        }}
+                        aria-label="餘額顯示上限"
+                      />
+                    </span>
+                  </label>
+                </div>
+                <progress
+                  max={preferences.balanceLimit}
+                  value={Math.min(balance?.amount ?? 0, preferences.balanceLimit)}
+                  aria-label="目前餘額相對於顯示上限"
                 />
-              </label>
-            </section>
-            <section>
-              <h3>服務連線</h3>
-              <p className="hint">
-                已保存 Runware API Key。更換 Key 不會刪除作品，舊任務需用原 Key 查詢。
-              </p>
-              {active ? (
-                <p className="notice">生成完成後即可更換或移除 Key。</p>
-              ) : (
-                <details>
-                  <summary>
-                    更換 API Key <ChevronDown size={16} />
-                  </summary>
-                  <KeyForm replacing onSuccess={updateKey} notify={notify} />
-                </details>
-              )}
-              <button
-                className="text-button danger"
-                disabled={active || dataBusy}
-                onClick={() => {
-                  if (confirm('移除這台裝置的 API Key？作品會保留，下次使用需重新設定 Key。')) {
-                    saveKey('');
-                    setApiKey('');
-                    setSettings(false);
-                  }
-                }}
-              >
-                移除這台裝置的 Key
-              </button>
-            </section>
-            <section>
-              <h3>作品與備份</h3>
-              <p className="hint">
-                備份包含圖片、影片、描述與作品設定，不含 API Key。請妥善保存；更換裝置後可以還原。
-              </p>
-              <div className="backup-actions">
+                <small>上限只用來顯示進度，不會限制實際生成費用。</small>
+              </section>
+            )}
+            <details className="settings-section">
+              <summary>
+                顯示偏好 <ChevronDown size={17} />
+              </summary>
+              <div className="settings-section-body">
+                <label className="toggle-row">
+                  <span>
+                    顯示餘額與費用<small>包含預估費用與實際生成費用</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={preferences.showMoney}
+                    onChange={(e) =>
+                      setPreferences({ ...preferences, showMoney: e.target.checked })
+                    }
+                  />
+                </label>
+              </div>
+            </details>
+            <details className="settings-section">
+              <summary>
+                服務連線 <ChevronDown size={17} />
+              </summary>
+              <div className="settings-section-body">
+                <p className="hint">
+                  已保存 Runware API Key。更換 Key 不會刪除作品，舊任務需用原 Key 查詢。
+                </p>
+                {active ? (
+                  <p className="notice">生成完成後即可更換或移除 Key。</p>
+                ) : (
+                  <div className="replace-key">
+                    <h3>更換 API Key</h3>
+                    <KeyForm replacing onSuccess={updateKey} notify={notify} />
+                  </div>
+                )}
                 <button
-                  className="secondary"
-                  disabled={dataBusy || active}
+                  className="text-button danger"
+                  disabled={active || dataBusy}
+                  onClick={() => {
+                    if (confirm('移除這台裝置的 API Key？作品會保留，下次使用需重新設定 Key。')) {
+                      saveKey('');
+                      setApiKey('');
+                      closeOverlay('settings');
+                    }
+                  }}
+                >
+                  移除這台裝置的 Key
+                </button>
+              </div>
+            </details>
+            <details className="settings-section">
+              <summary>
+                作品與備份 <ChevronDown size={17} />
+              </summary>
+              <div className="settings-section-body">
+                <p className="hint">
+                  備份包含圖片、影片、描述與作品設定，不含 API Key。請妥善保存；更換裝置後可以還原。
+                </p>
+                <div className="backup-actions">
+                  <button
+                    className="secondary"
+                    disabled={dataBusy || active}
+                    onClick={async () => {
+                      setDataBusy(true);
+                      try {
+                        download(
+                          await exportBackup(),
+                          `little-studio-${new Date().toISOString().slice(0, 10)}.zip`,
+                        );
+                        notify('備份已準備好，請保存下載的 ZIP 檔。');
+                      } catch {
+                        notify('匯出失敗，可能是記憶體或儲存空間不足。請先個別下載重要作品。');
+                      } finally {
+                        setDataBusy(false);
+                      }
+                    }}
+                  >
+                    <ArrowDownToLine size={17} />
+                    {dataBusy ? '處理中…' : '匯出備份'}
+                  </button>
+                  <label className={`secondary file-label ${dataBusy || active ? 'disabled' : ''}`}>
+                    <FolderHeart size={17} />
+                    還原備份
+                    <input
+                      aria-label="還原備份"
+                      type="file"
+                      accept=".zip,application/zip"
+                      disabled={dataBusy || active}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        setDataBusy(true);
+                        try {
+                          const count = await importBackup(file);
+                          notify(`已還原 ${count} 份作品，原有作品也已保留。`);
+                        } catch (err) {
+                          notify(err instanceof Error ? err.message : '備份無法還原。');
+                        } finally {
+                          setDataBusy(false);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="hint">
+                  單次可還原 250 MB 以內的 ZIP。手機記憶體有限，重要作品也請另外下載。
+                </p>
+                <button
+                  className="text-button danger"
+                  disabled={active || dataBusy}
                   onClick={async () => {
+                    if (
+                      !confirm(
+                        '清除這台裝置的所有作品、照片與生成紀錄？Key 與顯示偏好會保留。此操作無法復原，請先匯出備份。',
+                      )
+                    )
+                      return;
                     setDataBusy(true);
                     try {
-                      download(
-                        await exportBackup(),
-                        `little-studio-${new Date().toISOString().slice(0, 10)}.zip`,
-                      );
-                      notify('備份已準備好，請保存下載的 ZIP 檔。');
+                      await clearWorks();
+                      const homeState: NavigationState = {
+                        studio: true,
+                        screen: 'home',
+                        overlay: 'settings',
+                      };
+                      history.replaceState(homeState, '');
+                      applyNavigation(homeState);
+                      notify('已清除作品，服務設定已保留。');
                     } catch {
-                      notify('匯出失敗，可能是記憶體或儲存空間不足。請先個別下載重要作品。');
+                      notify('清除失敗，請稍後再試。');
                     } finally {
                       setDataBusy(false);
                     }
                   }}
                 >
-                  <ArrowDownToLine size={17} />
-                  {dataBusy ? '處理中…' : '匯出備份'}
+                  清除所有作品
                 </button>
-                <label className={`secondary file-label ${dataBusy || active ? 'disabled' : ''}`}>
-                  <FolderHeart size={17} />
-                  還原備份
-                  <input
-                    aria-label="還原備份"
-                    type="file"
-                    accept=".zip,application/zip"
-                    disabled={dataBusy || active}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (!file) return;
-                      setDataBusy(true);
-                      try {
-                        const count = await importBackup(file);
-                        notify(`已還原 ${count} 份作品，原有作品也已保留。`);
-                      } catch (err) {
-                        notify(err instanceof Error ? err.message : '備份無法還原。');
-                      } finally {
-                        setDataBusy(false);
-                      }
-                    }}
-                  />
-                </label>
+                <button
+                  className="text-button danger"
+                  disabled={active || dataBusy}
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
+                      )
+                    )
+                      return;
+                    setDataBusy(true);
+                    try {
+                      await clearWorks();
+                      saveKey('');
+                      resetPreferences();
+                      clearDraftDefaults();
+                      setApiKey('');
+                      setPreferences(readPreferences());
+                      const homeState: NavigationState = { studio: true, screen: 'home' };
+                      history.replaceState(homeState, '');
+                      applyNavigation(homeState);
+                      notify('已重設這台裝置。');
+                    } catch {
+                      notify('重設未完成，請稍後再試。');
+                    } finally {
+                      setDataBusy(false);
+                    }
+                  }}
+                >
+                  清除資料並重設服務
+                </button>
               </div>
-              <p className="hint">
-                單次可還原 250 MB 以內的 ZIP。手機記憶體有限，重要作品也請另外下載。
-              </p>
-              <button
-                className="text-button danger"
-                disabled={active || dataBusy}
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      '清除這台裝置的所有作品、照片與生成紀錄？Key 與顯示偏好會保留。此操作無法復原，請先匯出備份。',
-                    )
-                  )
-                    return;
-                  setDataBusy(true);
-                  try {
-                    await clearWorks();
-                    setScreen('home');
-                    setImageJob(null);
-                    notify('已清除作品，服務設定已保留。');
-                  } catch {
-                    notify('清除失敗，請稍後再試。');
-                  } finally {
-                    setDataBusy(false);
-                  }
-                }}
-              >
-                清除所有作品
-              </button>
-              <button
-                className="text-button danger"
-                disabled={active || dataBusy}
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
-                    )
-                  )
-                    return;
-                  setDataBusy(true);
-                  try {
-                    await clearWorks();
-                    saveKey('');
-                    resetPreferences();
-                    clearDraftDefaults();
-                    setApiKey('');
-                    setPreferences(readPreferences());
-                    setScreen('home');
-                    setSettings(false);
-                    notify('已重設這台裝置。');
-                  } catch {
-                    notify('重設未完成，請稍後再試。');
-                  } finally {
-                    setDataBusy(false);
-                  }
-                }}
-              >
-                清除資料並重設服務
-              </button>
-            </section>
-            <Privacy />
+            </details>
+            <div className="studio-credit">
+              Made by{' '}
+              <a href={STUDIO} target="_blank" rel="noreferrer">
+                weiweistudio.com <ExternalLink size={12} />
+              </a>
+            </div>
           </div>
         </Modal>
       )}
@@ -1548,7 +1682,7 @@ export default function App() {
           title={models[imageJob.model].name}
           notice={toast}
           wide
-          close={() => setImageJob(null)}
+          close={() => closeOverlay('viewer')}
         >
           <div className="viewer-image">
             <LocalImage id={imageJob.mediaId} alt={imageJob.draft.prompt} controls />
