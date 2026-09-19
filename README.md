@@ -15,12 +15,12 @@ Key 驗證成功後會保存到此瀏覽器。設定中可以更換 Key、移除
 
 ## 模型
 
-| 類別 | 模型                                                     | 輸入               |
-| ---- | -------------------------------------------------------- | ------------------ |
-| 圖片 | Nano Banana 2、GPT Image 2、FLUX.2 Pro、Seedream 5.0 Pro | 文字、參考照片修改 |
-| 影片 | Kling 3.0 Standard、Seedance 2.0 Fast、Veo 3.1 Fast      | 文字、單張起始照片 |
+| 類別 | 模型                                                             | 輸入               |
+| ---- | ---------------------------------------------------------------- | ------------------ |
+| 圖片 | Nano Banana 2、GPT Image 2.5 Flare、FLUX.2 Pro、Seedream 5.0 Pro | 文字、參考照片修改 |
+| 影片 | Kling 3.0 Standard、Seedance 2.0 Fast、Veo 3.1 Fast              | 文字、單張起始照片 |
 
-首次使用時，圖片預選 Nano Banana 2 與 GPT Image 2；影片預選 Kling 3.0 Standard，每個模型一支、4 秒、720p，聲音關閉。可以多選模型比較結果，各模型分別計費。文字聊天尚未提供。
+首次使用時，圖片預選 Nano Banana 2 與 GPT Image 2.5 Flare；影片預選 Kling 3.0 Standard，每個模型一支、4 秒、720p，聲音關閉。可以多選模型比較結果，各模型分別計費。文字聊天尚未提供。舊作品保留原本模型名稱；開啟舊圖片草稿時，GPT Image 2 的編輯選項改用 Flare。
 
 ## 資料與隱私
 
@@ -62,13 +62,15 @@ npm run test:e2e
 - 影片提供 4／6／8 秒、720p；僅選 Veo 時可使用 1080p。每個模型每次可生成 1–2 支 MP4。Veo 文字生影片支援直向與橫向，另外兩個模型也支援方形。
 - 有起始照片時，影片比例由照片與模型支援能力決定，不強制套用文字生影片的比例；Veo 使用補邊模式。聲音由模型生成，開啟時可能增加費用，實際效果依模型而異。
 - 影片保存上限為單檔 100 MB。瀏覽器無法內播時顯示下載提示，可下載後用裝置播放器開啟。
-- 費用由服務商依實際用量計算，未提供可靠的送出前數值估價；完成後顯示服務商回傳的 USD 費用。餘額讀取受帳戶權限限制，失敗會明示無法讀取。
+- 模型選單依 Runware 公開價目顯示目前設定的單張／單支預估費用，底部加總所選模型與數量。GPT Image 2.5 Flare 依 token 用量計費；無法可靠估算的設定會說明原因，不以範例價格代替。完成後顯示服務商回傳的 USD 實際費用。隱藏餘額與費用時，同時隱藏所有金額與估價說明。餘額讀取受帳戶權限限制，失敗會明示無法讀取。
 - ZIP 匯出限制為媒體合計 240 MB；還原上限為壓縮檔 250 MB、解壓資料 500 MB、單一檔案 100 MB。支援舊版圖片備份。備份仍可能受手機記憶體限制，超過上限時請先下載重要作品，再分批整理。
 - 本機已保存的作品可在已開啟網頁中離線查看；未提供 Service Worker，因此不保證離線重新載入整個網站。
 
 Runware 參數依 [Nano Banana 2](https://runware.ai/docs/models/google-nano-banana-2)、[GPT Image 2](https://runware.ai/docs/models/openai-gpt-image-2)、[非同步任務](https://runware.ai/docs/platform/task-polling) 與 [帳戶查詢](https://runware.ai/docs/platform/account-management) 官方文件實作。驗證與餘額解析另依真實 REST 回應核對：成功驗證可回傳空的 `data`，餘額支援 USD 數值與包含幣別的物件格式。最近核對日期：2026-09-15。
 
 新增模型依 [FLUX.2 Pro](https://runware.ai/docs/models/bfl-flux-2-pro)、[Seedream 5.0 Pro](https://runware.ai/docs/models/bytedance-seedream-5-0-pro)、[Kling 3.0 Standard](https://runware.ai/docs/models/klingai-video-3-0-standard)、[Seedance 2.0 Fast](https://runware.ai/docs/models/bytedance-seedance-2-0-fast) 與 [Veo 3.1 Fast](https://runware.ai/docs/models/google-veo-3-1-fast) 官方文件實作，並以少量真實生成核對。
+
+GPT Image 2.5 Flare 依 [Runware 官方文件](https://runware.ai/docs/models/openai-gpt-image-2-5-flare) 串接，使用 `openai:gpt-image@2.5-flare` 與 `settings.quality`，已驗證模擬 API 請求及流程，尚未執行 Flare 真實付費生成。
 
 ## 部署
 

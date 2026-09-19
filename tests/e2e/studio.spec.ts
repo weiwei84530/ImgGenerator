@@ -39,6 +39,128 @@ test('rapid clicks submit once and reset removes saved data and credentials', as
   await expect(page.locator('.saved-work')).toHaveCount(0);
 });
 
+test('v2 model pricing, actual dimensions and fullscreen return preserve the work', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  await setup(page);
+  await expect(page.locator('.toast')).toHaveCount(0);
+  await expect(page.locator('footer a')).toHaveCount(1);
+  await newWork(page);
+  await expect(page.getByRole('button', { name: '替換 Nano Banana 2' })).toContainText(
+    'US$ 0.0689／張',
+  );
+  await expect(page.getByRole('button', { name: '替換 GPT Image 2.5 Flare' })).toContainText(
+    '依實際用量計費',
+  );
+  await expect(page.locator('.cost-summary')).toContainText('總費用暫無法預估');
+  await page.getByRole('button', { name: '新增模型', exact: true }).click();
+  await expect(page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true })).toContainText(
+    '目前設定尚無可用估價',
+  );
+  await page.getByRole('button', { name: '取消新增模型' }).click();
+  await expect(page.locator('.quantity-card')).toContainText('04');
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
+  const flareRequest = api.submitted.find((task) => task.model === 'openai:gpt-image@2.5-flare')!;
+  expect(flareRequest.settings).toEqual({ quality: 'auto', background: 'auto' });
+  expect(flareRequest.providerSettings).toBeUndefined();
+  await expect(page.locator('.result-meta img')).toHaveCount(2);
+  await expect(page.locator('.result-image .zoom-hint')).toHaveCount(0);
+  await page
+    .getByRole('button', { name: /檢視 .* 圖片/ })
+    .first()
+    .click();
+  await expect(page.locator('.viewer-info')).toContainText('1 × 1 px');
+  await expect(page.getByRole('button', { name: '下載圖片', exact: true })).toHaveClass(
+    'primary full',
+  );
+  await page.getByRole('button', { name: '滿版檢視圖片' }).click();
+  await expect(page.locator('.fullscreen-viewer')).toBeVisible();
+  await expect(page.locator('.viewer-info')).toBeHidden();
+  const box = (await page.locator('.fullscreen-viewer').boundingBox())!;
+  expect(Math.abs(box.width - page.viewportSize()!.width)).toBeLessThan(1);
+  expect(Math.abs(box.height - page.viewportSize()!.height)).toBeLessThan(1);
+  await page.screenshot({ path: testInfo.outputPath('fullscreen.png') });
+  await page.getByRole('button', { name: '離開滿版檢視' }).click();
+  await expect(page.getByRole('button', { name: '下載圖片', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '滿版檢視圖片' }).click();
+  await page.goBack();
+  await expect(page.getByRole('button', { name: '下載圖片', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '關閉', exact: true }).click();
+  await page.getByRole('tab', { name: '編輯畫面' }).click();
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
+  await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
+  await page.getByRole('button', { name: '關閉', exact: true }).click();
+  await expect(page.locator('.model-price')).toHaveCount(0);
+  await expect(page.locator('.cost-summary')).toHaveCount(0);
+  expect(api.submitted).toHaveLength(2);
+});
+
+test('v2 work list hides empty drafts without deletion and loads ten at a time', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  await setup(page);
+  await page.getByRole('button', { name: /製作圖片/ }).click();
+  await page.getByLabel('拾光畫室首頁').click();
+  await expect(page.locator('.recent-work')).toHaveCount(0);
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(0);
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const request = indexedDB.open('img-generator');
+      request.onsuccess = () => resolve(request.result);
+    });
+    const tx = db.transaction('works', 'readwrite');
+    const store = tx.objectStore('works');
+    const empty = await new Promise<any>((resolve) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result[0]);
+    });
+    for (let index = 0; index < 23; index++)
+      store.put({
+        ...empty,
+        id: crypto.randomUUID(),
+        title: `draft ${index}`,
+        updatedAt: index + 1,
+        draft: { ...empty.draft, prompt: `draft ${index}` },
+      });
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+    });
+    db.close();
+  });
+  await page.reload();
+  await expect(page.locator('.saved-work')).toHaveCount(10);
+  await page.getByRole('button', { name: '顯示更多' }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(20);
+  await page.getByRole('button', { name: '顯示更多' }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(23);
+  await expect(page.getByRole('button', { name: '顯示更多' })).toHaveCount(0);
+  await page.locator('.work-open').first().click();
+  await expect(page.getByRole('tab', { name: '編輯畫面' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByRole('button', { name: /製作圖片/ }).click();
+  await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PNG, 'base64'),
+  });
+  await expect(page.getByAltText('參考照片 1')).toBeVisible();
+  await page.getByLabel('拾光畫室首頁').click();
+  await expect(page.locator('.recent-thumbnail img').first()).toBeVisible();
+  await page.locator('.recent-work').first().click();
+  await expect(page.getByRole('tab', { name: '編輯畫面' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
 test('media storage failure preserves the task and recovers without new generation', async ({
   page,
 }) => {
@@ -187,7 +309,7 @@ test('category defaults remember parameters while new works keep prompts and ref
   await mockRunware(page);
   await setup(page);
   await newWork(page);
-  await page.getByLabel('移除 GPT Image 2').click();
+  await page.getByLabel('移除 GPT Image 2.5 Flare').click();
   await page.getByLabel('增加張數').click();
   await page.getByRole('button', { name: '方形', exact: false }).click();
   await page.getByLabel('拾光畫室首頁').click();
@@ -200,7 +322,7 @@ test('category defaults remember parameters while new works keep prompts and ref
   await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await expect(page.getByLabel('移除 Nano Banana 2')).toBeVisible();
-  await expect(page.getByLabel('移除 GPT Image 2')).toHaveCount(0);
+  await expect(page.getByLabel('移除 GPT Image 2.5 Flare')).toHaveCount(0);
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   await expect(page.locator('.stepper')).toContainText('2 張');
   await page.getByLabel('拾光畫室首頁').click();
@@ -220,7 +342,7 @@ test('expanded image models generate alongside existing models and pass through 
     await page.getByRole('button', { name: '新增模型' }).click();
     await page.getByRole('button', { name: `新增 ${model}`, exact: true }).click();
   }
-  await page.getByLabel('加入照片', { exact: true }).setInputFiles({
+  await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
     name: 'photo.png',
     mimeType: 'image/png',
     buffer: Buffer.from(PNG, 'base64'),
@@ -232,7 +354,7 @@ test('expanded image models generate alongside existing models and pass through 
     'bfl:5@1',
     'bytedance:seedream@5.0-pro',
     'google:4@3',
-    'openai:gpt-image@2',
+    'openai:gpt-image@2.5-flare',
   ]);
   expect(api.submitted.every((t) => t.inputs?.referenceImages.length === 1)).toBe(true);
 });
@@ -351,7 +473,7 @@ test('two models, two photos each, original references, download and new work', 
   const api = await mockRunware(page);
   await setup(page);
   await newWork(page);
-  await page.getByLabel('加入照片', { exact: true }).setInputFiles({
+  await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
     name: 'reference.png',
     mimeType: 'image/png',
     buffer: Buffer.from(PNG, 'base64'),
@@ -390,7 +512,7 @@ test('partial failure preserves success and retries exactly one image', async ({
   await page.getByRole('button', { name: '重新生成這張' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   expect(api.submitted).toHaveLength(3);
-  expect(api.submitted[2].model).toBe('openai:gpt-image@2');
+  expect(api.submitted[2].model).toBe('openai:gpt-image@2.5-flare');
 });
 
 test('interrupted submission reloads by polling the same task without another charge', async ({
@@ -399,7 +521,7 @@ test('interrupted submission reloads by polling the same task without another ch
   const api = await mockRunware(page, { interrupt: true });
   await setup(page);
   await newWork(page);
-  await page.getByRole('button', { name: '移除 GPT Image 2' }).click();
+  await page.getByRole('button', { name: '移除 GPT Image 2.5 Flare' }).click();
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
   await page.reload();
@@ -519,7 +641,9 @@ test('existing works open results and local collections stay focused', async ({ 
     'aria-selected',
     'true',
   );
-  await expect(page.getByText('喜歡的作品記得下載下來，避免遺失。')).toBeVisible();
+  await expect(
+    page.getByText('圖像只暫存在瀏覽器；喜歡的作品請記得下載到裝置，避免遺失。'),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: '繼續這份作品' })).toHaveCount(0);
 });
 
@@ -537,7 +661,7 @@ test('balance limit persists and advanced settings only appear when relevant', a
 
   await newWork(page);
   await page.getByLabel('移除 Nano Banana 2').click();
-  await page.getByLabel('移除 GPT Image 2').click();
+  await page.getByLabel('移除 GPT Image 2.5 Flare').click();
   await page.getByRole('button', { name: '新增模型' }).click();
   await page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true }).click();
   await expect(page.getByText('進階設定', { exact: true })).toHaveCount(0);
@@ -584,14 +708,16 @@ test('workspace tabs slide and model cards open directly without a select', asyn
   const flux = page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true });
   await expect(flux).toBeVisible();
   await expect(flux.locator('img')).toBeVisible();
-  await expect(flux.locator('small')).not.toBeEmpty();
+  await expect(flux.locator('small').first()).not.toBeEmpty();
   await flux.scrollIntoViewIfNeeded();
   const headerBottom = await page
     .locator('.topbar')
     .evaluate((element) => element.getBoundingClientRect().bottom);
   expect((await tabs.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom + 7);
   await page.screenshot({ path: testInfo.outputPath('model-options.png') });
-  await expect(page.getByRole('button', { name: '新增 GPT Image 2', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '新增 GPT Image 2.5 Flare', exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByLabel('選擇新增模型')).toHaveCount(0);
   await flux.focus();
   await page.keyboard.press('Escape');
@@ -628,7 +754,9 @@ test('model selectors replace in place, join option rows, and keep removal indep
   const banana = page.getByRole('button', { name: '替換 Nano Banana 2', exact: true });
   await banana.click();
   await expect(banana).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('button', { name: '改用 GPT Image 2', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '改用 GPT Image 2.5 Flare', exact: true }),
+  ).toHaveCount(0);
   const flux = page.getByRole('button', { name: '改用 FLUX.2 Pro', exact: true });
   await flux.click();
   await expect(picker.locator('.model-trigger').first()).toHaveAccessibleName('替換 FLUX.2 Pro');
@@ -638,7 +766,7 @@ test('model selectors replace in place, join option rows, and keep removal indep
   await expect(picker.locator('.model-trigger').first()).toHaveAccessibleName('替換 FLUX.2 Pro');
   await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
 
-  const gpt = page.getByRole('button', { name: '替換 GPT Image 2', exact: true });
+  const gpt = page.getByRole('button', { name: '替換 GPT Image 2.5 Flare', exact: true });
   await gpt.focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('button', { name: '改用 Nano Banana 2', exact: true })).toBeFocused();
@@ -690,10 +818,10 @@ test('model selectors replace in place, join option rows, and keep removal indep
   await gpt.click();
   await page.getByLabel('描述你的想法').click();
   await expect(gpt).toHaveAttribute('aria-expanded', 'false');
-  await page.getByLabel('移除 GPT Image 2', { exact: true }).click();
+  await page.getByLabel('移除 GPT Image 2.5 Flare', { exact: true }).click();
   await expect(picker.locator('.model-trigger')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '新增模型', exact: true })).toBeFocused();
-  for (const name of ['Nano Banana 2', 'GPT Image 2', 'FLUX.2 Pro', 'Seedream 5.0 Pro']) {
+  for (const name of ['Nano Banana 2', 'GPT Image 2.5 Flare', 'FLUX.2 Pro', 'Seedream 5.0 Pro']) {
     await page.getByRole('button', { name: '新增模型', exact: true }).click();
     await page.getByRole('button', { name: `新增 ${name}`, exact: true }).click();
   }

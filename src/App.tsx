@@ -23,13 +23,14 @@ import {
   Film,
   Play,
   Smartphone,
+  Maximize2,
 } from 'lucide-react';
 import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
 import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
-import { ModelPicker } from './ModelPicker';
+import { ModelPicker, ProviderLogo } from './ModelPicker';
 import { queueGeneration, resumeJobs, runJob } from './engine';
-import { dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
+import { currentDraft, dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
 import { rememberDraft, rememberedDraft, clearDraftDefaults } from './draft-defaults';
 import { download, importPhoto } from './media';
 import {
@@ -40,7 +41,8 @@ import {
   savePreferences,
 } from './preferences';
 import { fetchBalance, keyTag, validateKey } from './runware';
-import { estimateDraftCost } from './pricing';
+import { estimateModelCost, type ModelEstimate } from './pricing';
+import { visibleWorks, workPreview } from './work-list';
 import {
   isActive,
   isVideo,
@@ -50,10 +52,12 @@ import {
   type Preferences,
   type Work,
   type WorkKind,
+  type ModelId,
 } from './types';
 
 const REPO = 'https://github.com/weiwei84530/ImgGenerator';
 const STUDIO = 'https://weiweistudio.com';
+const STORAGE_NOTE = '圖像只暫存在瀏覽器；喜歡的作品請記得下載到裝置，避免遺失。';
 const money = (value: number) => `US$ ${value.toFixed(4).replace(/0{1,2}$/, '')}`;
 const date = (value: number) =>
   new Intl.DateTimeFormat('zh-TW', {
@@ -70,22 +74,46 @@ interface NavigationState {
   screen: Screen;
   workId?: string;
   workTab?: WorkTab;
-  overlay?: 'settings' | 'viewer';
+  overlay?: 'settings' | 'viewer' | 'fullscreen';
   jobId?: string;
 }
 
 const isSystemTitle = (title: string) => ['還沒命名的作品', '從照片開始的新作品'].includes(title);
+
+function AnimatedNumber({ value }: { value: number }) {
+  const element = useRef<HTMLElement>(null);
+  const previous = useRef(value);
+  useEffect(() => {
+    if (previous.current !== value && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+      element.current?.animate(
+        [
+          { transform: 'translateY(0) scale(1)' },
+          { transform: 'translateY(-3px) scale(1.12)' },
+          { transform: 'translateY(0) scale(1)' },
+        ],
+        { duration: 280, easing: 'ease-out' },
+      );
+    previous.current = value;
+  }, [value]);
+  return (
+    <strong className="animated-number" ref={element}>
+      {value}
+    </strong>
+  );
+}
 
 function LocalImage({
   id,
   alt,
   className,
   controls = false,
+  onDimensions,
 }: {
   id: string;
   alt: string;
   className?: string;
   controls?: boolean;
+  onDimensions?: (size: { width: number; height: number }) => void;
 }) {
   const [url, setUrl] = useState('');
   const [video, setVideo] = useState(false);
@@ -128,7 +156,17 @@ function LocalImage({
         )}
       </>
     ) : (
-      <img src={url} alt={alt} className={className} />
+      <img
+        src={url}
+        alt={alt}
+        className={className}
+        onLoad={(event) =>
+          onDimensions?.({
+            width: event.currentTarget.naturalWidth,
+            height: event.currentTarget.naturalHeight,
+          })
+        }
+      />
     )
   ) : (
     <div className="image-placeholder">
@@ -144,12 +182,14 @@ function Modal({
   children,
   wide = false,
   notice,
+  fullscreen = false,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   wide?: boolean;
   notice?: string;
+  fullscreen?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -165,7 +205,7 @@ function Modal({
   return (
     <dialog
       ref={ref}
-      className={wide ? 'modal viewer' : 'modal'}
+      className={fullscreen ? 'modal viewer fullscreen-viewer' : wide ? 'modal viewer' : 'modal'}
       onCancel={(e) => {
         e.preventDefault();
         close();
@@ -174,7 +214,11 @@ function Modal({
     >
       <div className="modal-head">
         <h2>{title}</h2>
-        <button className="icon-button" onClick={close} aria-label="關閉">
+        <button
+          className="icon-button"
+          onClick={close}
+          aria-label={fullscreen ? '離開滿版檢視' : '關閉'}
+        >
           <X />
         </button>
       </div>
@@ -215,7 +259,7 @@ function KeyForm({
           saveKey(key);
           onSuccess(key);
           setInput('');
-          notify(replacing ? '已更換 API Key。' : '服務已連線，開始創作吧。');
+          if (replacing) notify('已更換 API Key。');
         } catch (err) {
           setError(err instanceof Error ? err.message : '無法連線，請稍後再試。');
         } finally {
@@ -285,9 +329,9 @@ function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; noti
         <span /> A LITTLE SPACE FOR IDEAS
       </div>
       <h1>
-        把美好，<em>慢慢畫出來。</em>
+        一個想法，<em>多位 AI 一起畫。</em>
       </h1>
-      <p className="intro">用一句話或一張照片，開始創作。</p>
+      <p className="intro">寫一句話、選幾位 AI 畫家，一次看見不同的創意。</p>
       <div className="paper-art" aria-hidden="true">
         <div className="art-card art-back">
           <div className="art-sun" />
@@ -303,7 +347,9 @@ function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; noti
             <b />
           </div>
         </div>
-        <div className="art-spark">✧</div>
+        <svg className="art-spark" viewBox="0 0 30 30">
+          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
+        </svg>
       </div>
       <section className="card setup-card">
         <div className="section-kicker">只需設定一次</div>
@@ -354,7 +400,7 @@ function Workspace({
   notify: Notify;
   openImage: (job: Job) => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(work.draft);
+  const [draft, setDraft] = useState<Draft>(() => currentDraft(work.draft));
   const latestDraft = useRef(draft);
   const [tab, setTab] = useState<WorkTab>(initialTab);
   const [submitting, setSubmitting] = useState(false);
@@ -362,7 +408,7 @@ function Workspace({
   const submitLock = useRef(false);
   const latestSave = useRef<Promise<void>>(Promise.resolve());
   const [saveError, setSaveError] = useState(false);
-  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
+  const [estimates, setEstimates] = useState<Partial<Record<ModelId, ModelEstimate>>>({});
   const active = jobs.some(isActive);
   const completedCount = jobs.filter((job) => job.status === 'succeeded').length;
   const total = draft.models.length * draft.count;
@@ -372,20 +418,26 @@ function Workspace({
   const availableModels = modelsFor(video ? 'video' : 'image');
   const maxRefs = video ? 1 : 4;
   const advancedModels = draft.models.filter((model) =>
-    ['banana', 'gpt', 'seedream', 'kling'].includes(model),
+    ['banana', 'gpt', 'gptFlare', 'seedream', 'kling'].includes(model),
   );
   useEffect(() => {
     let live = true;
-    setEstimatedCost(null);
-    if (showMoney && draft.models.length) {
-      void estimateDraftCost(draft).then((value) => {
-        if (live) setEstimatedCost(value);
-      });
+    setEstimates({});
+    if (showMoney) {
+      for (const model of modelsFor(isVideo(draft) ? 'video' : 'image'))
+        void estimateModelCost(model, draft).then((estimate) => {
+          if (live) setEstimates((values) => ({ ...values, [model]: estimate }));
+        });
     }
     return () => {
       live = false;
     };
   }, [draft, showMoney]);
+  const selectedEstimates = draft.models.map((model) => estimates[model]);
+  const priceLoading = selectedEstimates.some((estimate) => !estimate);
+  const unknownPrices = draft.models.filter((model) => estimates[model]?.amount === null);
+  const estimatedCost =
+    selectedEstimates.reduce((sum, estimate) => sum + (estimate?.amount ?? 0), 0) * draft.count;
   const update = (patch: Partial<Draft>) => {
     const next = { ...latestDraft.current, ...patch };
     if (isVideo(next) && next.videoResolution === '1080p' && !supports1080(next)) {
@@ -517,12 +569,12 @@ function Workspace({
                 <label className="upload-button">
                   <ImagePlus size={21} />
                   <span>
-                    {uploading ? '讀取照片中…' : '加入照片'}
+                    {uploading ? '讀取照片中…' : video ? '讓照片動起來' : '編輯照片'}
                     <small>選填 · 最多 {maxRefs} 張</small>
                   </span>
                   <input
                     type="file"
-                    aria-label="加入照片"
+                    aria-label={video ? '讓照片動起來' : '編輯照片'}
                     accept="image/jpeg,image/png,image/webp"
                     multiple={!video}
                     disabled={uploading}
@@ -560,8 +612,10 @@ function Workspace({
               selected={draft.models}
               available={availableModels}
               onChange={(selected) => update({ models: selected })}
+              estimates={estimates}
+              showMoney={showMoney}
             />
-            <p className="hint">每個 AI 都會使用同一段描述與相同照片。</p>
+            <p className="hint">每個 AI 都會使用同一段描述來建立成品。</p>
           </section>
           <section className="card">
             <h2 className="section-label">
@@ -647,34 +701,6 @@ function Workspace({
                 </p>
               </>
             )}
-            <div className="setting-row">
-              <div>
-                每個 AI 生成
-                <small>
-                  總共會得到 {total} {unit}
-                  {mediaName}
-                </small>
-              </div>
-              <div className="stepper">
-                <button
-                  aria-label={video ? '減少支數' : '減少張數'}
-                  disabled={draft.count <= 1}
-                  onClick={() => update({ count: draft.count - 1 })}
-                >
-                  <Minus size={17} />
-                </button>
-                <span>
-                  {draft.count} {unit}
-                </span>
-                <button
-                  aria-label={video ? '增加支數' : '增加張數'}
-                  disabled={draft.count >= (video ? 2 : 4)}
-                  onClick={() => update({ count: draft.count + 1 })}
-                >
-                  <Plus size={17} />
-                </button>
-              </div>
-            </div>
             {advancedModels.length > 0 && (
               <details className="advanced">
                 <summary>
@@ -700,7 +726,7 @@ function Workspace({
                         />
                         參考網路資料生成圖片
                       </label>
-                    ) : model === 'gpt' ? (
+                    ) : model === 'gpt' || model === 'gptFlare' ? (
                       <>
                         <label className="setting-row">
                           繪製品質
@@ -755,15 +781,63 @@ function Workspace({
               </details>
             )}
           </section>
+          <section className="card quantity-card">
+            <h2 className="section-label">
+              <span className="step">04</span>這次想要幾{unit}？
+            </h2>
+            <div className="quantity-controls">
+              <div>
+                <span>每個 AI 生成</span>
+                <small>多一{unit}，多一種可能</small>
+              </div>
+              <div className="stepper">
+                <button
+                  aria-label={video ? '減少支數' : '減少張數'}
+                  disabled={draft.count <= 1}
+                  onClick={() => update({ count: draft.count - 1 })}
+                >
+                  <Minus size={19} />
+                </button>
+                <span>
+                  <AnimatedNumber value={draft.count} /> {unit}
+                </span>
+                <button
+                  aria-label={video ? '增加支數' : '增加張數'}
+                  disabled={draft.count >= (video ? 2 : 4)}
+                  onClick={() => update({ count: draft.count + 1 })}
+                >
+                  <Plus size={19} />
+                </button>
+              </div>
+            </div>
+            <p className="quantity-total">
+              {draft.models.length} 位 AI，一共為你創作{' '}
+              <strong>
+                {total} {unit}
+                {mediaName}
+              </strong>
+            </p>
+          </section>
           <div className="submit-bar">
             <div className="submit-summary">
-              <span>
-                <strong>{draft.models.length}</strong> 個 AI <span className="times">×</span> 各{' '}
-                <strong>{draft.count}</strong> {unit} <span className="times">=</span>{' '}
-                <strong>{total}</strong> {unit}作品
+              <span className="count-equation">
+                <span>
+                  <AnimatedNumber value={draft.models.length} /> 個 AI{' '}
+                  <span className="times">×</span> 各 <AnimatedNumber value={draft.count} /> {unit}
+                </span>
+                <span className="times">=</span>
+                <span className="total-count">
+                  <AnimatedNumber value={total} /> {unit}作品
+                </span>
               </span>
-              {showMoney && estimatedCost !== null && (
-                <small>預估費用 {money(estimatedCost)} · 完成後依實際用量計費</small>
+              {showMoney && draft.models.length > 0 && (
+                <small className="cost-summary">
+                  {priceLoading
+                    ? '正在查詢預估費用…'
+                    : unknownPrices.length
+                      ? `總費用暫無法預估：${unknownPrices.map((model) => `${models[model].name} ${estimates[model]?.reason}`).join('；')}`
+                      : `預估費用 ${money(estimatedCost)} · 完成後依實際用量計費`}
+                </small>
               )}
             </div>
             <button
@@ -834,10 +908,12 @@ function Workspace({
                               onClick={() => openImage(job)}
                             >
                               <LocalImage id={job.mediaId} alt={job.draft.prompt} />
-                              <span className="zoom-hint">
-                                {video ? <Play size={16} /> : <Eye size={16} />}
-                                {video ? '播放' : '放大'}
-                              </span>
+                              {video && (
+                                <span className="zoom-hint">
+                                  <Play size={16} />
+                                  播放
+                                </span>
+                              )}
                             </button>
                           ) : (
                             <div className={`job-placeholder ${job.status}`}>
@@ -899,7 +975,7 @@ function Workspace({
                             </div>
                           )}
                           <div className="result-meta">
-                            <span className={`model-dot ${job.model}`} />
+                            <ProviderLogo model={job.model} />
                             <strong>{models[job.model].name}</strong>
                             {job.status === 'succeeded' && <Check size={14} />}
                           </div>
@@ -915,7 +991,7 @@ function Workspace({
               ))}
               <div className="local-note">
                 <ShieldCheck size={17} />
-                喜歡的作品記得下載下來，避免遺失。
+                {STORAGE_NOTE}
               </div>
             </>
           )}
@@ -950,6 +1026,9 @@ export default function App() {
   const [workId, setWorkId] = useState('');
   const [settings, setSettings] = useState(false);
   const [imageJob, setImageJob] = useState<Job | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [actualSize, setActualSize] = useState<{ width: number; height: number } | null>(null);
+  const [libraryLimit, setLibraryLimit] = useState(10);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [toast, setToast] = useState('');
@@ -967,8 +1046,9 @@ export default function App() {
     setWorkId(state.workId ?? '');
     setWorkTab(state.workTab ?? 'edit');
     setSettings(state.overlay === 'settings');
+    setFullscreen(state.overlay === 'fullscreen');
     setImageJob(
-      state.overlay === 'viewer' && state.jobId
+      (state.overlay === 'viewer' || state.overlay === 'fullscreen') && state.jobId
         ? (jobsRef.current.find((job) => job.id === state.jobId) ?? null)
         : null,
     );
@@ -988,6 +1068,7 @@ export default function App() {
     else {
       setSettings(false);
       setImageJob(null);
+      setFullscreen(false);
     }
   }, []);
 
@@ -1093,8 +1174,19 @@ export default function App() {
     };
   }, [apiKey]);
 
-  const openWork = (work: Work, tab: WorkTab = 'results') =>
-    navigate({ screen: 'work', workId: work.id, workTab: tab });
+  useEffect(() => {
+    setActualSize(null);
+  }, [imageJob?.mediaId]);
+  useEffect(() => {
+    if (screen !== 'library') setLibraryLimit(10);
+  }, [screen]);
+  const listedWorks = visibleWorks(works, jobs);
+  const openWork = (work: Work, tab?: WorkTab) =>
+    navigate({
+      screen: 'work',
+      workId: work.id,
+      workTab: tab ?? (jobs.some((job) => job.workId === work.id) ? 'results' : 'edit'),
+    });
   const createWork = async (ref?: string, kind: WorkKind = 'image') => {
     try {
       const draft = rememberedDraft(kind);
@@ -1264,26 +1356,21 @@ export default function App() {
                 <div>
                   <strong>我的作品</strong>
                   <small>
-                    {works.length
-                      ? `${works.length} 份創作，${completed} 個已保存成果`
-                      : '收藏每一次靈光乍現'}
+                    <ShieldCheck size={14} /> {STORAGE_NOTE}
                   </small>
                 </div>
                 <ArrowRight size={19} />
               </button>
-              {works.length > 0 && (
+              {listedWorks.length > 0 && (
                 <section className="recent">
                   <div className="section-row">
                     <h2>最近使用</h2>
                   </div>
-                  {works.slice(0, 3).map((work) => (
+                  {listedWorks.slice(0, 3).map((work) => (
                     <button className="recent-work" key={work.id} onClick={() => openWork(work)}>
                       <span className="recent-thumbnail">
-                        {jobs.find((j) => j.workId === work.id && j.mediaId)?.mediaId ? (
-                          <LocalImage
-                            id={jobs.find((j) => j.workId === work.id && j.mediaId)!.mediaId!}
-                            alt="作品預覽"
-                          />
+                        {workPreview(work, jobs) ? (
+                          <LocalImage id={workPreview(work, jobs)!} alt="作品預覽" />
                         ) : (
                           <Images size={23} />
                         )}
@@ -1299,10 +1386,6 @@ export default function App() {
                   ))}
                 </section>
               )}
-              <div className="local-note">
-                <ShieldCheck size={18} />
-                <span>作品只暫存在這個瀏覽器；喜歡的作品請下載，以免遺失。</span>
-              </div>
             </>
           )}
           {screen === 'work' && current && (
@@ -1338,20 +1421,20 @@ export default function App() {
               <div className="page-heading compact-heading">
                 <h1>我的作品</h1>
               </div>
-              {!works.length ? (
+              {!listedWorks.length ? (
                 <div className="empty-state">
                   <FolderHeart size={40} />
                   <p>還沒有作品，開始第一次創作吧。</p>
                 </div>
               ) : (
                 <div className="work-list">
-                  {works.map((work) => {
-                    const result = jobs.find((j) => j.workId === work.id && j.mediaId);
+                  {listedWorks.slice(0, libraryLimit).map((work) => {
+                    const preview = workPreview(work, jobs);
                     return (
                       <article className="saved-work" key={work.id}>
                         <button onClick={() => openWork(work)} className="work-open">
-                          {result?.mediaId ? (
-                            <LocalImage id={result.mediaId} alt={work.title} />
+                          {preview ? (
+                            <LocalImage id={preview} alt={work.title} />
                           ) : (
                             <div className="work-empty">
                               <Images size={30} />
@@ -1382,6 +1465,14 @@ export default function App() {
                       </article>
                     );
                   })}
+                  {listedWorks.length > libraryLimit && (
+                    <button
+                      className="secondary full"
+                      onClick={() => setLibraryLimit((limit) => limit + 10)}
+                    >
+                      顯示更多
+                    </button>
+                  )}
                 </div>
               )}
               <p className="hint">
@@ -1392,11 +1483,11 @@ export default function App() {
         </>
       )}
       <footer>
-        <a href={STUDIO} target="_blank" rel="noreferrer">
-          weiweistudio.com <ExternalLink size={12} />
-        </a>
         <a href={REPO} target="_blank" rel="noreferrer">
-          GitHub <ExternalLink size={12} />
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+          </svg>{' '}
+          GitHub
         </a>
       </footer>
       {toast && !settings && !imageJob && (
@@ -1636,10 +1727,28 @@ export default function App() {
           title={models[imageJob.model].name}
           notice={toast}
           wide
-          close={() => closeOverlay('viewer')}
+          fullscreen={fullscreen}
+          close={() => closeOverlay(fullscreen ? 'fullscreen' : 'viewer')}
         >
           <div className="viewer-image">
-            <LocalImage id={imageJob.mediaId} alt={imageJob.draft.prompt} controls />
+            <LocalImage
+              id={imageJob.mediaId}
+              alt={imageJob.draft.prompt}
+              controls
+              onDimensions={setActualSize}
+            />
+            {!fullscreen && !isVideo(imageJob.draft) && (
+              <button
+                className="expand-image"
+                aria-label="滿版檢視圖片"
+                onClick={() =>
+                  navigate({ screen, workId, workTab, overlay: 'fullscreen', jobId: imageJob.id })
+                }
+              >
+                <Maximize2 size={19} />
+                放大
+              </button>
+            )}
           </div>
           <div className="viewer-info">
             <p>{imageJob.draft.prompt}</p>
@@ -1647,7 +1756,9 @@ export default function App() {
               {date(imageJob.createdAt)} ·{' '}
               {isVideo(imageJob.draft)
                 ? `${imageJob.draft.duration ?? 4} 秒 · ${imageJob.draft.videoResolution ?? '720p'} · ${imageJob.draft.audio ? '生成聲音' : '無聲'}（請求設定）`
-                : `${dimensions(imageJob.model, imageJob.draft).width} × ${dimensions(imageJob.model, imageJob.draft).height} px（請求尺寸）`}
+                : actualSize
+                  ? `${actualSize.width} × ${actualSize.height} px`
+                  : '正在讀取圖片尺寸…'}
             </small>
             {preferences.showMoney && (
               <p className="hint">
@@ -1656,7 +1767,7 @@ export default function App() {
             )}
             <div className="viewer-actions">
               <button
-                className="secondary full"
+                className="primary full"
                 onClick={async () => {
                   try {
                     const media = await getMedia(imageJob.mediaId!);
@@ -1674,7 +1785,7 @@ export default function App() {
               {!isVideo(imageJob.draft) && (
                 <>
                   <button
-                    className="primary full"
+                    className="secondary full"
                     onClick={() => void createWork(imageJob.mediaId)}
                   >
                     <ImagePlus size={18} />
@@ -1690,9 +1801,6 @@ export default function App() {
                 </>
               )}
             </div>
-            {!isVideo(imageJob.draft) && (
-              <p className="hint">會把圖片帶入新作品；按下生成前不會收費。</p>
-            )}
           </div>
         </Modal>
       )}

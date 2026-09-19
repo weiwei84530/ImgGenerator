@@ -1,4 +1,13 @@
-export const modelIds = ['banana', 'gpt', 'flux', 'seedream', 'kling', 'seedance', 'veo'] as const;
+export const modelIds = [
+  'banana',
+  'gpt',
+  'gptFlare',
+  'flux',
+  'seedream',
+  'kling',
+  'seedance',
+  'veo',
+] as const;
 export type ModelId = (typeof modelIds)[number];
 export type WorkKind = 'image' | 'video';
 export type Ratio = 'portrait' | 'square' | 'landscape';
@@ -56,7 +65,7 @@ export interface Balance {
 }
 export const newDraft = (): Draft => ({
   prompt: '',
-  models: ['banana', 'gpt'],
+  models: ['banana', 'gptFlare'],
   ratio: 'portrait',
   resolution: '1K',
   count: 1,

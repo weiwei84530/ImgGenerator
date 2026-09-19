@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initialPreferences } from '../src/preferences';
-import { calculateModelEstimate } from '../src/pricing';
-import { buildRequest, dimensions } from '../src/models';
+import { calculateModelEstimate, estimateModelCost } from '../src/pricing';
+import { buildRequest, currentDraft, dimensions, models, modelsFor } from '../src/models';
+import { visibleWorks, workPreview } from '../src/work-list';
 import { newDraft, type Job, type Work } from '../src/types';
 import {
   addJobs,
@@ -31,6 +32,24 @@ describe('preferences', () => {
   });
 });
 describe('pricing estimates', () => {
+  it('matches the BFL calculator for first and additional output megapixels', () => {
+    const rates = [
+      { amount: 0.03, unit: 'outputMegapixel', label: 'First megapixel out' },
+      { amount: 0.015, unit: 'outputMegapixel', label: 'Each further megapixel out', after: 1 },
+    ];
+    expect(calculateModelEstimate('flux', { ...newDraft(), ratio: 'square' }, rates)).toBeCloseTo(
+      0.03,
+    );
+    expect(
+      calculateModelEstimate('flux', { ...newDraft(), ratio: 'portrait', resolution: '2K' }, rates),
+    ).toBeCloseTo(0.06);
+    expect(
+      calculateModelEstimate('flux', { ...newDraft(), ratio: 'square', resolution: '2K' }, rates),
+    ).toBeCloseTo(0.075);
+    expect(
+      calculateModelEstimate('flux', { ...newDraft(), resolution: '2K' }, rates.slice(0, 1)),
+    ).toBeNull();
+  });
   it('uses exact catalog rates and refuses token-priced estimates', () => {
     const draft = newDraft();
     draft.models = ['banana'];
@@ -62,6 +81,35 @@ describe('pricing estimates', () => {
   });
 });
 describe('Runware request capabilities', () => {
+  it('migrates editable GPT selections while keeping legacy model requests and names', () => {
+    const oldDraft = { ...newDraft(), models: ['banana', 'gpt'] as const };
+    const migrated = currentDraft({ ...oldDraft, models: [...oldDraft.models] });
+    expect(migrated.models).toEqual(['banana', 'gptFlare']);
+    expect(oldDraft.models).toEqual(['banana', 'gpt']);
+    expect(models.gpt.name).toBe('GPT Image 2');
+    expect(modelsFor('image')).not.toContain('gpt');
+    const request = buildRequest(
+      'task',
+      'gptFlare',
+      { ...migrated, prompt: 'a flower', gptQuality: 'high', gptBackground: 'transparent' },
+      [],
+    );
+    expect(request.model).toBe('openai:gpt-image@2.5-flare');
+    expect(request.settings).toEqual({ quality: 'high', background: 'transparent' });
+    expect(request.providerSettings).toBeUndefined();
+  });
+  it('explains unknown prices without substituting example prices', async () => {
+    expect(await estimateModelCost('gptFlare', newDraft())).toEqual({
+      amount: null,
+      reason: '依實際用量計費，無法預估',
+    });
+    expect(
+      (await estimateModelCost('banana', { ...newDraft(), googleSearch: true })).reason,
+    ).toContain('網路搜尋');
+    expect((await estimateModelCost('flux', { ...newDraft(), refs: ['photo'] })).reason).toContain(
+      '參考照片',
+    );
+  });
   it('passes identical prompts and references to both models with their supported dimensions', () => {
     const draft = {
       ...newDraft(),
@@ -100,6 +148,46 @@ describe('Runware request capabilities', () => {
     expect('settings' in request && request.settings).toEqual({ background: 'transparent' });
     expect(request.providerSettings?.openai).toEqual({ quality: 'high' });
     expect(request.outputFormat).toBe('PNG');
+  });
+});
+describe('work listing', () => {
+  it('hides empty drafts but retains references, prompts, failed and pending work', () => {
+    const base = { id: 'empty', title: 'draft', createdAt: 1, updatedAt: 1, draft: newDraft() };
+    const works: Work[] = [
+      base,
+      { ...base, id: 'prompt', draft: { ...newDraft(), prompt: 'hello' } },
+      { ...base, id: 'photo', draft: { ...newDraft(), refs: ['photo'] } },
+      { ...base, id: 'failed' },
+      { ...base, id: 'pending' },
+    ];
+    const job: Job = {
+      id: 'job',
+      workId: 'failed',
+      batchId: 'batch',
+      model: 'gpt',
+      status: 'failed',
+      createdAt: 1,
+      draft: newDraft(),
+      keyTag: '',
+    };
+    expect(
+      visibleWorks(works, [job, { ...job, workId: 'pending', status: 'processing' }]).map(
+        (work) => work.id,
+      ),
+    ).toEqual(['prompt', 'photo', 'failed', 'pending']);
+    expect(works).toHaveLength(5);
+  });
+  it('uses the latest successful generation or the last reference as thumbnail', () => {
+    const { work, job } = fixture();
+    work.draft.refs = ['first', 'last'];
+    expect(workPreview(work, [])).toBe('last');
+    expect(
+      workPreview(work, [
+        { ...job, mediaId: 'older', createdAt: 1 },
+        { ...job, mediaId: 'newer', createdAt: 2 },
+        { ...job, status: 'failed', mediaId: undefined, createdAt: 3 },
+      ]),
+    ).toBe('newer');
   });
 });
 function fixture(): { work: Work; job: Job; mediaId: string } {

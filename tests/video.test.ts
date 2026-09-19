@@ -54,7 +54,7 @@ it('keeps category settings separate without carrying prompts or photos into a n
   clearDraftDefaults();
   expect(rememberedDraft('video').models).toEqual(['kling']);
   memory.set('img-generator.defaults.image', '{broken');
-  expect(rememberedDraft('image').models).toEqual(['banana', 'gpt']);
+  expect(rememberedDraft('image').models).toEqual(['banana', 'gptFlare']);
 });
 
 it('adapts video input and audio parameters without sending forbidden dimensions with first frames', () => {

@@ -20,6 +20,7 @@ async function fetchRates(model: ModelId) {
   if (existing) return existing;
   const request = fetch(
     `https://content.runware.ai/models/${encodeURIComponent(models[model].air)}/pricing`,
+    { signal: AbortSignal.timeout(8000), credentials: 'omit', referrerPolicy: 'no-referrer' },
   )
     .then(async (response) => {
       if (!response.ok) return null;
@@ -34,10 +35,16 @@ async function fetchRates(model: ModelId) {
 }
 
 const rate = (rates: PricingRate[], unit: string, label?: RegExp) =>
-  rates.find((item) => item.unit === unit && (!label || label.test(item.label ?? '')))?.amount;
+  rates.find(
+    (item) =>
+      Number.isFinite(item.amount) &&
+      item.amount >= 0 &&
+      item.unit === unit &&
+      (!label || label.test(item.label ?? '')),
+  )?.amount;
 
 export function calculateModelEstimate(model: ModelId, draft: Draft, rates: PricingRate[]) {
-  if (model === 'gpt') return null;
+  if (model === 'gpt' || model === 'gptFlare') return null;
 
   if (model === 'banana') {
     if (draft.googleSearch) return null;
@@ -49,10 +56,14 @@ export function calculateModelEstimate(model: ModelId, draft: Draft, rates: Pric
 
   if (model === 'flux') {
     if (draft.refs.length) return null;
-    const perMegapixel = rate(rates, 'outputMegapixel', /First megapixel/i);
-    if (perMegapixel === undefined) return null;
+    const first = rate(rates, 'outputMegapixel', /First megapixel/i);
+    const additional = rate(rates, 'outputMegapixel', /Each further megapixel/i);
+    if (first === undefined) return null;
     const size = dimensions(model, draft);
-    return perMegapixel * ((size.width * size.height) / 1_000_000);
+    // BFL's calculator bills whole 1024 x 1024 megapixels, with a separate first tier.
+    const megapixels = Math.max(1, Math.ceil((size.width * size.height) / (1024 * 1024)));
+    if (megapixels > 1 && additional === undefined) return null;
+    return first + (megapixels - 1) * (additional ?? 0);
   }
 
   if (model === 'seedream') {
@@ -85,13 +96,26 @@ export function calculateModelEstimate(model: ModelId, draft: Draft, rates: Pric
   return null;
 }
 
-export async function estimateDraftCost(draft: Draft) {
-  const values = await Promise.all(
-    draft.models.map(async (model) => {
-      const rates = await fetchRates(model);
-      return rates ? calculateModelEstimate(model, draft, rates) : null;
-    }),
-  );
-  if (values.some((value) => value === null)) return null;
-  return values.reduce<number>((sum, value) => sum + (value ?? 0), 0) * draft.count;
+export interface ModelEstimate {
+  amount: number | null;
+  reason?: string;
+}
+
+export async function estimateModelCost(model: ModelId, draft: Draft): Promise<ModelEstimate> {
+  if (model === 'gpt' || model === 'gptFlare')
+    return { amount: null, reason: '依實際用量計費，無法預估' };
+  if (model === 'banana' && draft.googleSearch)
+    return { amount: null, reason: '含網路搜尋，用量未定，暫無法預估' };
+  if (model === 'flux' && draft.refs.length)
+    return { amount: null, reason: '參考照片用量未定，暫無法預估' };
+  if (
+    isVideo(draft) &&
+    ((model === 'veo' && draft.ratio === 'square' && !draft.refs.length) ||
+      (model !== 'veo' && draft.videoResolution === '1080p'))
+  )
+    return { amount: null, reason: '不支援目前的比例或解析度' };
+  const rates = await fetchRates(model);
+  if (!rates) return { amount: null, reason: '暫時無法取得價格' };
+  const amount = calculateModelEstimate(model, draft, rates);
+  return { amount, ...(amount === null ? { reason: '目前設定尚無可用估價' } : {}) };
 }

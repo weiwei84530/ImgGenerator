@@ -1,7 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, Minus, Plus } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import { models } from './models';
 import type { ModelId } from './types';
+import type { ModelEstimate } from './pricing';
 import googleLogo from './assets/providers/google.png';
 import openaiLogo from './assets/providers/openai.png';
 import bflLogo from './assets/providers/bfl.png';
@@ -11,6 +12,7 @@ import klingLogo from './assets/providers/kling.png';
 const providerLogos = {
   banana: googleLogo,
   gpt: openaiLogo,
+  gptFlare: openaiLogo,
   flux: bflLogo,
   seedream: bytedanceLogo,
   kling: klingLogo,
@@ -18,15 +20,38 @@ const providerLogos = {
   veo: googleLogo,
 };
 
-function ModelContents({ model }: { model: ModelId }) {
+export function ProviderLogo({ model }: { model: ModelId }) {
+  return (
+    <span className={`model-icon ${model}`}>
+      <img src={providerLogos[model]} alt="" />
+    </span>
+  );
+}
+
+function ModelContents({
+  model,
+  estimate,
+  showMoney,
+}: {
+  model: ModelId;
+  estimate?: ModelEstimate;
+  showMoney?: boolean;
+}) {
   return (
     <>
-      <span className={`model-icon ${model}`}>
-        <img src={providerLogos[model]} alt="" />
-      </span>
+      <ProviderLogo model={model} />
       <span className="model-option-copy">
         <strong>{models[model].name}</strong>
         <small>{models[model].note}</small>
+        {showMoney && (
+          <small className="model-price">
+            {!estimate
+              ? '正在查詢價格…'
+              : estimate.amount === null
+                ? estimate.reason
+                : `預估 US$ ${estimate.amount.toFixed(4).replace(/0{1,2}$/, '')}／${models[model].kind === 'video' ? '支' : '張'}`}
+          </small>
+        )}
       </span>
     </>
   );
@@ -36,10 +61,14 @@ export function ModelPicker({
   selected,
   available,
   onChange,
+  estimates,
+  showMoney,
 }: {
   selected: ModelId[];
   available: ModelId[];
   onChange: (models: ModelId[]) => void;
+  estimates?: Partial<Record<ModelId, ModelEstimate>>;
+  showMoney?: boolean;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -135,13 +164,13 @@ export function ModelPicker({
                 {model === null ? (
                   <span>{expanded ? '選擇要加入的 AI' : '新增模型'}</span>
                 ) : (
-                  <ModelContents model={model} />
+                  <ModelContents
+                    model={model}
+                    estimate={estimates?.[model]}
+                    showMoney={showMoney}
+                  />
                 )}
-                {model === null && !expanded ? (
-                  <Plus size={20} aria-hidden="true" />
-                ) : (
-                  <ChevronDown className="model-chevron" size={18} aria-hidden="true" />
-                )}
+                {model === null && !expanded ? <Plus size={20} aria-hidden="true" /> : null}
               </button>
               {model !== null && (
                 <button
@@ -200,7 +229,11 @@ export function ModelPicker({
                       }
                     }}
                   >
-                    <ModelContents model={choice} />
+                    <ModelContents
+                      model={choice}
+                      estimate={estimates?.[choice]}
+                      showMoney={showMoney}
+                    />
                     {model === null && <Plus size={18} aria-hidden="true" />}
                   </button>
                 ))}
