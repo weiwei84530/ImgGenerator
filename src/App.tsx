@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
 import { exportBackup, importBackup } from './backup';
+import { HomeIllustration } from './HomeIllustration';
 import { queueGeneration, resumeJobs, runJob } from './engine';
 import { dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
 import { rememberDraft, rememberedDraft, clearDraftDefaults } from './draft-defaults';
@@ -1268,7 +1269,7 @@ export default function App() {
                 onClick={() => void createWork()}
                 disabled={storageError}
               >
-                <div>
+                <div className="create-copy">
                   <h2>製作圖片</h2>
                   <p>
                     把文字變成畫面，
@@ -1279,33 +1280,37 @@ export default function App() {
                     開始創作 <ArrowRight size={19} />
                   </span>
                 </div>
-                <div className="mini-art" aria-hidden="true">
-                  <span className="mini-sun" />
-                  <span className="mini-hill" />
-                  <Sparkles />
-                </div>
+                <HomeIllustration kind="image" />
               </button>
               <button
                 className="create-card video-create-card"
                 onClick={() => void createWork(undefined, 'video')}
                 disabled={storageError}
               >
-                <div>
+                <div className="create-copy">
                   <h2>製作影片</h2>
                   <p>
-                    描述一段動作，
+                    讓文字成為短片，
                     <br />
-                    或讓喜歡的照片成為短片。
+                    也讓喜歡的照片動起來。
                   </p>
                   <span className="create-cta">
                     開始創作 <ArrowRight size={19} />
                   </span>
                 </div>
-                <div className="mini-art video-mini-art" aria-hidden="true">
-                  <span className="mini-sun" />
-                  <span className="mini-hill" />
-                  <Sparkles />
+                <HomeIllustration kind="video" />
+              </button>
+              <button className="create-card chat-create-card" disabled>
+                <div className="create-copy">
+                  <h2>聊天問答</h2>
+                  <p>
+                    問問生活大小事，
+                    <br />
+                    一起整理想法與靈感。
+                  </p>
+                  <span className="coming-soon">準備中</span>
                 </div>
+                <HomeIllustration kind="chat" />
               </button>
               <button className="library-link" onClick={() => navigate({ screen: 'library' })}>
                 <span className="library-icon">
@@ -1324,7 +1329,7 @@ export default function App() {
               {works.length > 0 && (
                 <section className="recent">
                   <div className="section-row">
-                    <h2>接著上次的靈感</h2>
+                    <h2>最近使用</h2>
                   </div>
                   {works.slice(0, 3).map((work) => (
                     <button className="recent-work" key={work.id} onClick={() => openWork(work)}>

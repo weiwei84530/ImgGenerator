@@ -617,17 +617,21 @@ details[open] > summary > svg:last-child {
   margin-top: 11px;
 }
 .create-card {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 4px;
   width: 100%;
   position: relative;
   text-align: left;
   background: #e7edde;
   border: 1px solid #dde5d5;
-  min-height: 228px;
+  min-height: 172px;
   border-radius: 20px;
-  padding: 27px 24px;
-  overflow: hidden;
+  padding: 20px;
   align-items: center;
+}
+.create-copy {
+  min-width: 0;
 }
 .feature-label {
   font-size: 10px;
@@ -635,66 +639,67 @@ details[open] > summary > svg:last-child {
   color: #7a8b70;
 }
 .create-card h2 {
-  font-size: 27px;
-  margin-top: 6px;
-  letter-spacing: 0.07em;
+  font-size: 24px;
+  letter-spacing: 0.04em;
 }
 .create-card p {
-  font-size: 13px;
-  line-height: 1.85;
-  color: #7e8975;
+  font-size: 14px;
+  line-height: 1.75;
+  color: #59664f;
   margin-top: 7px;
 }
 .create-cta {
   display: flex;
   align-items: center;
-  gap: 23px;
-  font-size: 13px;
+  gap: 14px;
+  font-size: 14px;
   font-weight: 600;
   color: #45654d;
-  margin-top: 22px;
+  margin-top: 14px;
 }
-.mini-art {
-  position: absolute;
-  right: 23px;
-  top: 45px;
-  width: 116px;
-  height: 143px;
-  background: #d1dcca;
-  transform: rotate(9deg);
-  border: 7px solid #fffef3;
-  border-bottom-width: 21px;
-  border-radius: 5px;
-  box-shadow: 0 5px 12px #46614315;
-  overflow: hidden;
+.home-illustration {
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }
-.mini-sun {
-  display: block;
-  position: absolute;
-  border-radius: 50%;
-  background: #f4e5b2;
-  width: 40px;
-  height: 40px;
-  right: 8px;
-  top: 12px;
+.illustration-paper {
+  filter: drop-shadow(0 5px 5px #354e3912);
 }
-.mini-hill {
-  position: absolute;
-  bottom: -12px;
-  left: -17px;
-  display: block;
-  width: 162px;
-  height: 64px;
-  border-radius: 60% 40% 0 0;
-  background: #86a08a;
-  transform: rotate(-14deg);
+.chat-create-card {
+  margin-top: 12px;
+  background: #f2ebdf;
+  border-color: #e8decd;
 }
-.mini-art svg {
-  position: absolute;
-  bottom: 29px;
-  left: 10px;
-  color: #fff7d4;
-  width: 23px;
+.chat-create-card:disabled {
+  opacity: 1;
+}
+.chat-create-card p {
+  color: #746248;
+}
+.coming-soon {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 3px 11px;
+  border: 1px solid #ddd0b9;
+  border-radius: 20px;
+  color: #78603b;
+  font-size: 12px;
+  font-weight: 600;
+  background: #faf5e9;
+}
+@media (hover: hover) {
+  .create-card:not(:disabled):hover {
+    background: #dfe8d5;
+  }
+  .video-create-card:not(:disabled):hover {
+    background: #dce8e4;
+  }
+}
+@media (min-width: 420px) {
+  .create-card {
+    grid-template-columns: minmax(0, 1fr) 140px;
+    padding: 20px 24px;
+  }
 }
 .library-link {
   margin-top: 15px;
@@ -723,7 +728,7 @@ details[open] > summary > svg:last-child {
 }
 .library-link small {
   display: block;
-  color: #939688;
+  color: #6d7565;
   font-size: 12px;
   margin-top: 5px;
 }
@@ -1667,14 +1672,9 @@ footer a {
   .card {
     padding: 26px;
   }
-  .mini-art {
-    right: 38px;
-    width: 132px;
-    height: 160px;
-    top: 38px;
-  }
   .create-card {
-    padding: 30px;
+    grid-template-columns: minmax(0, 1fr) 164px;
+    padding: 20px 26px;
   }
   .home-heading h1 {
     font-size: 40px;
@@ -1700,14 +1700,9 @@ footer a {
     width: 290px;
     height: 205px;
   }
-  .mini-art {
-    right: 14px;
-    width: 88px;
-    height: 121px;
-    top: 60px;
-  }
   .create-card {
-    padding: 20px;
+    grid-template-columns: minmax(0, 1fr) 80px;
+    padding: 18px 16px;
   }
   .model-card {
     padding: 9px;
@@ -1815,9 +1810,9 @@ footer a {
 }
 
 .video-create-card {
-  margin-top: 16px;
-  background: #e8edf3;
-  border-color: #d6dfe9;
+  margin-top: 12px;
+  background: #e5edeb;
+  border-color: #d4e2de;
 }
 .video-art {
   display: grid;
@@ -1941,21 +1936,14 @@ footer a {
 }
 
 .home-first-card {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .video-create-card .create-cta {
-  color: #416e9c;
+  color: #456e70;
 }
-.video-mini-art {
-  background: #cfdae8;
-  border-color: #f8fbff;
-}
-.video-mini-art .mini-sun {
-  background: #f2d7ab;
-}
-.video-mini-art .mini-hill {
-  background: #7894b0;
+.video-create-card p {
+  color: #536b69;
 }
 .system-title {
   color: #79947c !important;
