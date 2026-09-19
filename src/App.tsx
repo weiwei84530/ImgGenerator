@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
+  ArrowLeft,
   ArrowRight,
   Check,
   ChevronDown,
@@ -381,11 +382,13 @@ function Workspace({
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [addModel, setAddModel] = useState(false);
+  const addModelButton = useRef<HTMLButtonElement>(null);
   const submitLock = useRef(false);
   const latestSave = useRef<Promise<void>>(Promise.resolve());
   const [saveError, setSaveError] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
   const active = jobs.some(isActive);
+  const completedCount = jobs.filter((job) => job.status === 'succeeded').length;
   const total = draft.models.length * draft.count;
   const video = isVideo(draft);
   const unit = video ? '支' : '張';
@@ -463,7 +466,8 @@ function Workspace({
   };
   return (
     <>
-      <div className="tabs" role="tablist" aria-label="工作區">
+      <div className="tabs" data-tab={tab} role="tablist" aria-label="工作區">
+        <span className="tab-indicator" aria-hidden="true" />
         <button role="tab" aria-selected={tab === 'edit'} onClick={() => setTab('edit')}>
           <Sparkles size={18} />
           編輯畫面
@@ -471,7 +475,9 @@ function Workspace({
         <button role="tab" aria-selected={tab === 'results'} onClick={() => setTab('results')}>
           <Images size={18} />
           本次作品{' '}
-          <span className="count">{jobs.filter((j) => j.status === 'succeeded').length}</span>
+          <span className={`count${completedCount > 0 ? ' has-results' : ''}`}>
+            {completedCount}
+          </span>
           {active && <span className="working-dot" />}
         </button>
       </div>
@@ -593,42 +599,49 @@ function Workspace({
               ))}
             </div>
             {draft.models.length < availableModels.length && (
-              <div className="add-model-row">
-                {addModel ? (
-                  <select
-                    aria-label="選擇新增模型"
-                    defaultValue=""
-                    autoFocus
-                    onBlur={(event) => {
-                      if (!event.currentTarget.value) setAddModel(false);
-                    }}
-                    onChange={(event) => {
-                      const model = event.target.value as (typeof availableModels)[number];
-                      if (model) update({ models: [...draft.models, model] });
-                      setAddModel(false);
-                    }}
-                  >
-                    <option value="" disabled>
-                      選擇模型
-                    </option>
-                    {availableModels
-                      .filter((model) => !draft.models.includes(model))
-                      .map((model) => (
-                        <option value={model} key={model}>
-                          {models[model].name}
-                        </option>
-                      ))}
-                  </select>
-                ) : (
-                  <span>新增模型</span>
-                )}
+              <div
+                className="model-disclosure"
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && addModel) {
+                    setAddModel(false);
+                    addModelButton.current?.focus();
+                  }
+                }}
+              >
                 <button
-                  className="icon-button"
+                  ref={addModelButton}
+                  className="add-model-row"
                   aria-label={addModel ? '取消新增模型' : '新增模型'}
+                  aria-expanded={addModel}
+                  aria-controls="available-models"
                   onClick={() => setAddModel(!addModel)}
                 >
+                  <span>{addModel ? '選擇要加入的 AI' : '新增模型'}</span>
                   {addModel ? <X size={18} /> : <Plus size={20} />}
                 </button>
+                <div id="available-models" className="model-options" hidden={!addModel}>
+                  {availableModels
+                    .filter((model) => !draft.models.includes(model))
+                    .map((model) => (
+                      <button
+                        className="model-card model-option"
+                        key={model}
+                        aria-label={`新增 ${models[model].name}`}
+                        onClick={() => {
+                          update({ models: [...draft.models, model] });
+                          setAddModel(false);
+                          addModelButton.current?.focus();
+                        }}
+                      >
+                        <ModelMark model={model} />
+                        <span className="model-option-copy">
+                          <strong>{models[model].name}</strong>
+                          <small>{models[model].note}</small>
+                        </span>
+                        <Plus size={20} aria-hidden="true" />
+                      </button>
+                    ))}
+                </div>
               </div>
             )}
             <p className="hint">每個 AI 都會使用同一段描述與相同照片。</p>
@@ -872,7 +885,7 @@ function Workspace({
               <h2>美好的作品，從一個想法開始</h2>
               <p>回到編輯畫面，寫下想創作的內容吧。</p>
               <button className="secondary" onClick={() => setTab('edit')}>
-                開始編輯 <ArrowRight size={17} />
+                <ArrowLeft size={17} /> 開始編輯
               </button>
             </div>
           ) : (
@@ -996,6 +1009,21 @@ function Workspace({
 }
 
 export default function App() {
+  const topbarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const topbar = topbarRef.current;
+    if (!topbar) return;
+    const measure = () => {
+      topbar.parentElement?.style.setProperty(
+        '--topbar-height',
+        `${topbar.getBoundingClientRect().height}px`,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(topbar);
+    return () => observer.disconnect();
+  }, []);
   const [apiKey, setApiKey] = useState(readKey);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
   const [screen, setScreen] = useState<Screen>('home');
@@ -1201,7 +1229,7 @@ export default function App() {
         <strong>請將手機轉回直向</strong>
         <span>直向畫面比較容易操作畫室。</span>
       </div>
-      <header className="topbar">
+      <header className="topbar" ref={topbarRef}>
         <button
           className="brand"
           onClick={() => navigate({ screen: 'home' })}

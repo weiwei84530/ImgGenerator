@@ -218,7 +218,7 @@ test('expanded image models generate alongside existing models and pass through 
   await newWork(page);
   for (const model of ['FLUX.2 Pro', 'Seedream 5.0 Pro']) {
     await page.getByRole('button', { name: '新增模型' }).click();
-    await page.getByLabel('選擇新增模型').selectOption({ label: model });
+    await page.getByRole('button', { name: `新增 ${model}`, exact: true }).click();
   }
   await page.getByLabel('加入照片', { exact: true }).setInputFiles({
     name: 'photo.png',
@@ -299,7 +299,7 @@ test('video partial failures retry only the failed model and reload only polls t
   await setup(page);
   await page.getByRole('button', { name: /製作影片/ }).click();
   await page.getByRole('button', { name: '新增模型' }).click();
-  await page.getByLabel('選擇新增模型').selectOption({ label: 'Veo 3.1 Fast' });
+  await page.getByRole('button', { name: '新增 Veo 3.1 Fast', exact: true }).click();
   await page.getByLabel('描述你的想法').fill('一朵花在微風中搖動');
   await page.getByRole('button', { name: '開始生成影片' }).click();
   await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
@@ -539,10 +539,10 @@ test('balance limit persists and advanced settings only appear when relevant', a
   await page.getByLabel('移除 Nano Banana 2').click();
   await page.getByLabel('移除 GPT Image 2').click();
   await page.getByRole('button', { name: '新增模型' }).click();
-  await page.getByLabel('選擇新增模型').selectOption({ label: 'FLUX.2 Pro' });
+  await page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true }).click();
   await expect(page.getByText('進階設定', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '新增模型' }).click();
-  await page.getByLabel('選擇新增模型').selectOption({ label: 'Seedream 5.0 Pro' });
+  await page.getByRole('button', { name: '新增 Seedream 5.0 Pro', exact: true }).click();
   await expect(page.getByText('進階設定', { exact: true })).toBeVisible();
 });
 
@@ -553,4 +553,67 @@ test('phone landscape shows the portrait prompt', async ({ page }) => {
   await expect(page.getByText('請將手機轉回直向')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('請將手機轉回直向')).toBeHidden();
+});
+
+test('workspace tabs slide and model cards open directly without a select', async ({
+  page,
+}, testInfo) => {
+  await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  const tabs = page.getByRole('tablist', { name: '工作區' });
+  const indicator = tabs.locator('.tab-indicator');
+  const edit = page.getByRole('tab', { name: '編輯畫面' });
+  const results = page.getByRole('tab', { name: /本次作品/ });
+  const indicatorLeft = (await indicator.boundingBox())!.x;
+  await results.click();
+  await expect
+    .poll(async () => (await indicator.boundingBox())!.x)
+    .toBeGreaterThan(indicatorLeft + 50);
+  await page.screenshot({ path: testInfo.outputPath('empty-results.png') });
+  await page.getByRole('button', { name: '開始編輯' }).click();
+  await expect(edit).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(async () => Math.abs((await indicator.boundingBox())!.x - indicatorLeft))
+    .toBeLessThan(1);
+  expect(await tabs.evaluate((element) => getComputedStyle(element).borderTopLeftRadius)).toBe(
+    '13px',
+  );
+
+  await page.getByRole('button', { name: '新增模型', exact: true }).click();
+  const flux = page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true });
+  await expect(flux).toBeVisible();
+  await expect(flux.locator('img')).toBeVisible();
+  await expect(flux.locator('small')).not.toBeEmpty();
+  await flux.scrollIntoViewIfNeeded();
+  const headerBottom = await page
+    .locator('.topbar')
+    .evaluate((element) => element.getBoundingClientRect().bottom);
+  expect((await tabs.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom + 7);
+  await page.screenshot({ path: testInfo.outputPath('model-options.png') });
+  await expect(page.getByRole('button', { name: '新增 GPT Image 2', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('選擇新增模型')).toHaveCount(0);
+  await flux.focus();
+  await page.keyboard.press('Escape');
+  await expect(flux).toBeHidden();
+  await expect(page.getByRole('button', { name: '新增模型', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: '新增模型', exact: true }).click();
+  await flux.click();
+  await expect(page.getByLabel('移除 FLUX.2 Pro')).toBeVisible();
+  await expect(page.getByRole('button', { name: '新增模型', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await page.getByLabel('移除 FLUX.2 Pro').click();
+
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await expect(results.locator('.count')).toHaveText('2');
+  await edit.click();
+  await expect(results).toHaveAttribute('aria-selected', 'false');
+  await expect(results.locator('.count')).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(results.locator('.count')).toHaveCSS('background-color', 'rgb(98, 110, 101)');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(
+    await indicator.evaluate((element) => parseFloat(getComputedStyle(element).transitionDuration)),
+  ).toBeLessThan(0.01);
 });
