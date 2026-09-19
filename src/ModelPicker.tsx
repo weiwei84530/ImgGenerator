@@ -1,0 +1,217 @@
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ChevronDown, Minus, Plus } from 'lucide-react';
+import { models } from './models';
+import type { ModelId } from './types';
+import googleLogo from './assets/providers/google.png';
+import openaiLogo from './assets/providers/openai.png';
+import bflLogo from './assets/providers/bfl.png';
+import bytedanceLogo from './assets/providers/bytedance.png';
+import klingLogo from './assets/providers/kling.png';
+
+const providerLogos = {
+  banana: googleLogo,
+  gpt: openaiLogo,
+  flux: bflLogo,
+  seedream: bytedanceLogo,
+  kling: klingLogo,
+  seedance: bytedanceLogo,
+  veo: googleLogo,
+};
+
+function ModelContents({ model }: { model: ModelId }) {
+  return (
+    <>
+      <span className={`model-icon ${model}`}>
+        <img src={providerLogos[model]} alt="" />
+      </span>
+      <span className="model-option-copy">
+        <strong>{models[model].name}</strong>
+        <small>{models[model].note}</small>
+      </span>
+    </>
+  );
+}
+
+export function ModelPicker({
+  selected,
+  available,
+  onChange,
+}: {
+  selected: ModelId[];
+  available: ModelId[];
+  onChange: (models: ModelId[]) => void;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const triggers = useRef(new Map<number, HTMLButtonElement>());
+  const focusTarget = useRef<number | null>(null);
+  const focusOption = useRef(false);
+  const id = useId();
+  const choices = available.filter((model) => !selected.includes(model));
+
+  useEffect(() => {
+    if (open === null) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(null);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (focusTarget.current !== null) {
+      triggers.current.get(focusTarget.current)?.focus();
+      focusTarget.current = null;
+    }
+    if (open !== null && focusOption.current) {
+      root.current?.querySelector<HTMLButtonElement>('[data-open="true"] .model-option')?.focus();
+      focusOption.current = false;
+    }
+  }, [selected, open]);
+
+  const close = () => {
+    if (open !== null) triggers.current.get(open)?.focus();
+    setOpen(null);
+  };
+
+  return (
+    <div
+      className="model-list"
+      ref={root}
+      onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget))
+          setOpen(null);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }
+      }}
+    >
+      {[...selected, ...(choices.length ? [null] : [])].map((model, index) => {
+        const expanded = open === index;
+        const panelId = `${id}-options-${index}`;
+        return (
+          <div
+            className={`model-select${model === null ? ' model-select-add' : ''}`}
+            data-open={expanded}
+            key={index}
+          >
+            <div className="model-select-heading">
+              <button
+                type="button"
+                className={model === null ? 'add-model-row' : 'model-card model-trigger'}
+                ref={(element) => {
+                  if (element) triggers.current.set(index, element);
+                  else triggers.current.delete(index);
+                }}
+                aria-label={
+                  model === null
+                    ? expanded
+                      ? '取消新增模型'
+                      : '新增模型'
+                    : `替換 ${models[model].name}`
+                }
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                onClick={() => setOpen(expanded ? null : index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    if (expanded) {
+                      event.currentTarget
+                        .closest('.model-select')
+                        ?.querySelector<HTMLButtonElement>('.model-option')
+                        ?.focus();
+                    } else {
+                      focusOption.current = true;
+                      setOpen(index);
+                    }
+                  }
+                }}
+              >
+                {model === null ? (
+                  <span>{expanded ? '選擇要加入的 AI' : '新增模型'}</span>
+                ) : (
+                  <ModelContents model={model} />
+                )}
+                {model === null && !expanded ? (
+                  <Plus size={20} aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="model-chevron" size={18} aria-hidden="true" />
+                )}
+              </button>
+              {model !== null && (
+                <button
+                  type="button"
+                  className="icon-button model-remove"
+                  aria-label={`移除 ${models[model].name}`}
+                  onClick={() => {
+                    focusTarget.current = Math.min(index, selected.length - 1);
+                    setOpen(null);
+                    onChange(selected.filter((_, position) => position !== index));
+                  }}
+                >
+                  <Minus size={20} />
+                </button>
+              )}
+            </div>
+            <div id={panelId} className="model-options" inert={!expanded} aria-hidden={!expanded}>
+              <div className="model-options-inner">
+                {choices.map((choice) => (
+                  <button
+                    type="button"
+                    className="model-card model-option"
+                    key={choice}
+                    aria-label={`${model === null ? '新增' : '改用'} ${models[choice].name}`}
+                    onClick={() => {
+                      focusTarget.current = index;
+                      setOpen(null);
+                      onChange(
+                        model === null
+                          ? [...selected, choice]
+                          : selected.map((value, position) =>
+                              position === index ? choice : value,
+                            ),
+                      );
+                    }}
+                    onKeyDown={(event) => {
+                      const buttons = Array.from(
+                        event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
+                          'button',
+                        ),
+                      );
+                      const position = buttons.indexOf(event.currentTarget);
+                      const next =
+                        event.key === 'ArrowDown'
+                          ? (position + 1) % buttons.length
+                          : event.key === 'ArrowUp'
+                            ? (position + buttons.length - 1) % buttons.length
+                            : event.key === 'Home'
+                              ? 0
+                              : event.key === 'End'
+                                ? buttons.length - 1
+                                : null;
+                      if (next !== null) {
+                        event.preventDefault();
+                        buttons[next].focus();
+                      }
+                    }}
+                  >
+                    <ModelContents model={choice} />
+                    {model === null && <Plus size={18} aria-hidden="true" />}
+                  </button>
+                ))}
+                {!choices.length && (
+                  <p className="model-options-empty">所有模型都已選取，可先移除其他模型再替換。</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

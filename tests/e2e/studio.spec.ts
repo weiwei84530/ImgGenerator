@@ -617,3 +617,116 @@ test('workspace tabs slide and model cards open directly without a select', asyn
     await indicator.evaluate((element) => parseFloat(getComputedStyle(element).transitionDuration)),
   ).toBeLessThan(0.01);
 });
+
+test('model selectors replace in place, join option rows, and keep removal independent', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  await setup(page);
+  await newWork(page);
+  const picker = page.locator('.model-list');
+  const banana = page.getByRole('button', { name: '替換 Nano Banana 2', exact: true });
+  await banana.click();
+  await expect(banana).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: '改用 GPT Image 2', exact: true })).toHaveCount(0);
+  const flux = page.getByRole('button', { name: '改用 FLUX.2 Pro', exact: true });
+  await flux.click();
+  await expect(picker.locator('.model-trigger').first()).toHaveAccessibleName('替換 FLUX.2 Pro');
+  await expect(picker.locator('.model-trigger').first()).toBeFocused();
+  await expect(picker.locator('.model-trigger')).toHaveCount(2);
+  await page.reload();
+  await expect(picker.locator('.model-trigger').first()).toHaveAccessibleName('替換 FLUX.2 Pro');
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+
+  const gpt = page.getByRole('button', { name: '替換 GPT Image 2', exact: true });
+  await gpt.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('button', { name: '改用 Nano Banana 2', exact: true })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(
+    page.getByRole('button', { name: '改用 Seedream 5.0 Pro', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(gpt).toBeFocused();
+  await expect(gpt).toHaveAttribute('aria-expanded', 'false');
+  await gpt.click();
+  await page.getByRole('button', { name: '替換 FLUX.2 Pro', exact: true }).click();
+  await expect(picker.locator('[data-open="true"]')).toHaveCount(1);
+  await expect(gpt).toHaveAttribute('aria-expanded', 'false');
+  await page.getByLabel('移除 FLUX.2 Pro', { exact: true }).click();
+  await expect(picker.locator('[data-open="true"]')).toHaveCount(0);
+  await expect(picker.locator('.model-trigger')).toHaveCount(1);
+  await expect(gpt).toBeFocused();
+
+  for (const width of [320, 390, 600, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole('button', { name: '新增模型', exact: true }).click();
+    const group = picker.locator('[data-open="true"]');
+    await group.scrollIntoViewIfNeeded();
+    await expect(group.locator('.model-options')).toHaveCSS('grid-template-rows', /[1-9]/);
+    await page.screenshot({ path: testInfo.outputPath(`connected-options-${width}.png`) });
+    const geometry = await group.evaluate((element) => {
+      const heading = element.querySelector('.model-select-heading')!.getBoundingClientRect();
+      const rows = [...element.querySelectorAll('.model-option')].map((row) =>
+        row.getBoundingClientRect(),
+      );
+      const remove = document.querySelector('.model-remove')!.getBoundingClientRect();
+      const copy = document
+        .querySelector('.model-trigger .model-option-copy')!
+        .getBoundingClientRect();
+      return {
+        firstGap: rows[0].top - heading.bottom,
+        rowGaps: rows.slice(1).map((row, index) => row.top - rows[index].bottom),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        overlapping: copy.right > remove.left,
+      };
+    });
+    expect(Math.abs(geometry.firstGap)).toBeLessThan(1);
+    expect(geometry.rowGaps.every((gap) => Math.abs(gap) < 1)).toBe(true);
+    expect(geometry.overflow).toBe(false);
+    expect(geometry.overlapping).toBe(false);
+    await page.getByRole('button', { name: '取消新增模型' }).click();
+  }
+  await gpt.click();
+  await page.getByLabel('描述你的想法').click();
+  await expect(gpt).toHaveAttribute('aria-expanded', 'false');
+  await page.getByLabel('移除 GPT Image 2', { exact: true }).click();
+  await expect(picker.locator('.model-trigger')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '新增模型', exact: true })).toBeFocused();
+  for (const name of ['Nano Banana 2', 'GPT Image 2', 'FLUX.2 Pro', 'Seedream 5.0 Pro']) {
+    await page.getByRole('button', { name: '新增模型', exact: true }).click();
+    await page.getByRole('button', { name: `新增 ${name}`, exact: true }).click();
+  }
+  await expect(picker.locator('.model-trigger')).toHaveCount(4);
+  await expect(page.getByRole('button', { name: '新增模型', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '替換 Seedream 5.0 Pro', exact: true }),
+  ).toBeFocused();
+  await page.getByRole('button', { name: '替換 Seedream 5.0 Pro', exact: true }).click();
+  await expect(
+    picker.locator('[data-open="true"]').getByText('所有模型都已選取，可先移除其他模型再替換。'),
+  ).toBeVisible();
+  expect(api.submitted).toHaveLength(0);
+});
+
+test('replacing video models preserves compatibility checks', async ({ page }, testInfo) => {
+  const api = await mockRunware(page);
+  await setup(page);
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await page.getByRole('button', { name: '替換 Kling 3.0 Standard', exact: true }).click();
+  const group = page.locator('.model-select[data-open="true"]');
+  await group.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('video-replacement.png') });
+  await page.getByRole('button', { name: '改用 Veo 3.1 Fast', exact: true }).click();
+  await page.getByLabel(/清晰度/).selectOption('1080p');
+  await page.getByRole('button', { name: '替換 Veo 3.1 Fast', exact: true }).click();
+  await page.getByRole('button', { name: '改用 Seedance 2.0 Fast', exact: true }).click();
+  await expect(page.getByLabel(/清晰度/)).toHaveValue('720p');
+  await expect(page.getByText('已切換為所選模型共同支援的 720p。')).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: '替換 Seedance 2.0 Fast', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/清晰度/)).toHaveValue('720p');
+  expect(api.submitted).toHaveLength(0);
+});

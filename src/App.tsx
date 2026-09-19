@@ -27,6 +27,7 @@ import {
 import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
 import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
+import { ModelPicker } from './ModelPicker';
 import { queueGeneration, resumeJobs, runJob } from './engine';
 import { dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
 import { rememberDraft, rememberedDraft, clearDraftDefaults } from './draft-defaults';
@@ -40,11 +41,6 @@ import {
 } from './preferences';
 import { fetchBalance, keyTag, validateKey } from './runware';
 import { estimateDraftCost } from './pricing';
-import googleLogo from './assets/providers/google.png';
-import openaiLogo from './assets/providers/openai.png';
-import bflLogo from './assets/providers/bfl.png';
-import bytedanceLogo from './assets/providers/bytedance.png';
-import klingLogo from './assets/providers/kling.png';
 import {
   isActive,
   isVideo,
@@ -78,25 +74,7 @@ interface NavigationState {
   jobId?: string;
 }
 
-const providerLogos = {
-  banana: googleLogo,
-  gpt: openaiLogo,
-  flux: bflLogo,
-  seedream: bytedanceLogo,
-  kling: klingLogo,
-  seedance: bytedanceLogo,
-  veo: googleLogo,
-} as const;
-
 const isSystemTitle = (title: string) => ['還沒命名的作品', '從照片開始的新作品'].includes(title);
-
-function ModelMark({ model }: { model: keyof typeof providerLogos }) {
-  return (
-    <span className={`model-icon ${model}`}>
-      <img src={providerLogos[model]} alt="" />
-    </span>
-  );
-}
 
 function LocalImage({
   id,
@@ -381,8 +359,6 @@ function Workspace({
   const [tab, setTab] = useState<WorkTab>(initialTab);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [addModel, setAddModel] = useState(false);
-  const addModelButton = useRef<HTMLButtonElement>(null);
   const submitLock = useRef(false);
   const latestSave = useRef<Promise<void>>(Promise.resolve());
   const [saveError, setSaveError] = useState(false);
@@ -580,70 +556,11 @@ function Workspace({
               </h2>
               <span className="subtle-pill">已選 {draft.models.length} 個</span>
             </div>
-            <div className="model-list">
-              {draft.models.map((model) => (
-                <div className="model-card" key={model}>
-                  <ModelMark model={model} />
-                  <div>
-                    <strong>{models[model].name}</strong>
-                    <small>{models[model].note}</small>
-                  </div>
-                  <button
-                    className="icon-button"
-                    aria-label={`移除 ${models[model].name}`}
-                    onClick={() => update({ models: draft.models.filter((m) => m !== model) })}
-                  >
-                    <Minus size={20} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            {draft.models.length < availableModels.length && (
-              <div
-                className="model-disclosure"
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape' && addModel) {
-                    setAddModel(false);
-                    addModelButton.current?.focus();
-                  }
-                }}
-              >
-                <button
-                  ref={addModelButton}
-                  className="add-model-row"
-                  aria-label={addModel ? '取消新增模型' : '新增模型'}
-                  aria-expanded={addModel}
-                  aria-controls="available-models"
-                  onClick={() => setAddModel(!addModel)}
-                >
-                  <span>{addModel ? '選擇要加入的 AI' : '新增模型'}</span>
-                  {addModel ? <X size={18} /> : <Plus size={20} />}
-                </button>
-                <div id="available-models" className="model-options" hidden={!addModel}>
-                  {availableModels
-                    .filter((model) => !draft.models.includes(model))
-                    .map((model) => (
-                      <button
-                        className="model-card model-option"
-                        key={model}
-                        aria-label={`新增 ${models[model].name}`}
-                        onClick={() => {
-                          update({ models: [...draft.models, model] });
-                          setAddModel(false);
-                          addModelButton.current?.focus();
-                        }}
-                      >
-                        <ModelMark model={model} />
-                        <span className="model-option-copy">
-                          <strong>{models[model].name}</strong>
-                          <small>{models[model].note}</small>
-                        </span>
-                        <Plus size={20} aria-hidden="true" />
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
+            <ModelPicker
+              selected={draft.models}
+              available={availableModels}
+              onChange={(selected) => update({ models: selected })}
+            />
             <p className="hint">每個 AI 都會使用同一段描述與相同照片。</p>
           </section>
           <section className="card">
