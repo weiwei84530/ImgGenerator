@@ -474,6 +474,9 @@ test('mobile layout fits and unavailable balance is never shown as zero', async 
   expect((await page.locator('.topbar').boundingBox())?.height).toBeGreaterThan(85);
   await page.screenshot({ path: testInfo.outputPath('welcome.png'), fullPage: true });
   await setup(page);
+  expect((await page.locator('.topbar').boundingBox())?.height).toBeGreaterThan(85);
+  await expect(page.getByText('MAKE SOMETHING LOVELY')).toHaveCount(0);
+  await expect(page.getByText('讓想像，')).toHaveCount(0);
   await expect(page.getByLabel('重新查詢餘額')).toContainText('暫時無法讀取');
   await page.screenshot({ path: testInfo.outputPath('home.png'), fullPage: true });
   await newWork(page);

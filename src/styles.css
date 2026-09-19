@@ -1897,28 +1897,28 @@ footer a {
   position: sticky;
   top: 0;
   z-index: 12;
-  min-height: calc(65px + env(safe-area-inset-top));
-  padding: calc(9px + env(safe-area-inset-top)) 0 9px;
+  min-height: calc(91px + env(safe-area-inset-top));
+  padding: calc(24px + env(safe-area-inset-top)) 0 22px;
   background: color-mix(in srgb, var(--paper) 95%, transparent);
   backdrop-filter: blur(14px);
 }
 .brand {
-  gap: 8px;
-  font-size: 17px;
+  gap: 11px;
+  font-size: 19px;
 }
 .brand-symbol {
-  width: 36px;
-  height: 38px;
-  border-radius: 12px 12px 12px 4px;
+  width: 42px;
+  height: 44px;
+  border-radius: 14px 14px 14px 4px;
 }
 .brand-symbol svg {
-  width: 18px;
+  width: 21px;
 }
 .header-tools {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 9px;
   min-width: 0;
 }
 .header-tools .connected {
@@ -1940,21 +1940,8 @@ footer a {
   height: 40px;
 }
 
-.welcome-shell .topbar {
-  min-height: auto;
-  padding: calc(24px + env(safe-area-inset-top)) 0 22px;
-}
-.welcome-shell .brand {
-  gap: 11px;
-  font-size: 19px;
-}
-.welcome-shell .brand-symbol {
-  width: 42px;
-  height: 44px;
-  border-radius: 14px 14px 14px 4px;
-}
-.welcome-shell .brand-symbol svg {
-  width: 21px;
+.home-first-card {
+  margin-top: 24px;
 }
 
 .video-create-card .create-cta {
@@ -1978,7 +1965,7 @@ footer a {
 
 .tabs {
   position: sticky;
-  top: calc(65px + env(safe-area-inset-top));
+  top: calc(91px + env(safe-area-inset-top));
   z-index: 10;
   margin: 0 0 17px;
   border-radius: 0 0 13px 13px;

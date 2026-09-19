@@ -1194,7 +1194,7 @@ export default function App() {
   };
 
   return (
-    <main className={`shell${apiKey ? '' : ' welcome-shell'}`}>
+    <main className="shell">
       <div className="landscape-lock" role="status">
         <Smartphone size={46} />
         <strong>請將手機轉回直向</strong>
@@ -1263,17 +1263,8 @@ export default function App() {
         <>
           {screen === 'home' && (
             <>
-              <div className="page-heading home-heading">
-                <div className="eyebrow">MAKE SOMETHING LOVELY</div>
-                <h1>
-                  讓想像，
-                  <br />
-                  <em>有一個樣子。</em>
-                </h1>
-                <p className="muted">你的靈感，值得被看見。</p>
-              </div>
               <button
-                className="create-card"
+                className="create-card home-first-card"
                 onClick={() => void createWork()}
                 disabled={storageError}
               >
