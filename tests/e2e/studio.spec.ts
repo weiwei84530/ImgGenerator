@@ -469,9 +469,9 @@ test('mobile layout fits and unavailable balance is never shown as zero', async 
 }, testInfo) => {
   await mockRunware(page, { badBalance: true });
   await page.goto('/');
-  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(
-    true,
-  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.locator('.paper-art')).toBeVisible();
+  expect((await page.locator('.topbar').boundingBox())?.height).toBeGreaterThan(85);
   await page.screenshot({ path: testInfo.outputPath('welcome.png'), fullPage: true });
   await setup(page);
   await expect(page.getByLabel('重新查詢餘額')).toContainText('暫時無法讀取');

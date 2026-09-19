@@ -280,35 +280,50 @@ function KeyForm({
   );
 }
 
+function Privacy() {
+  return (
+    <div className="privacy">
+      <ShieldCheck size={21} />
+      <div>
+        <strong>你的作品，留在你的裝置</strong>
+        <p>
+          本站不設後端，也不收集你的 Key、照片或描述。生成時，內容會由瀏覽器直接傳送至 Runware
+          及必要的上游服務，由服務商處理與依其政策保存。
+        </p>
+        <a href={REPO} target="_blank" rel="noreferrer">
+          查看公開原始碼 <ExternalLink size={13} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; notify: Notify }) {
   return (
     <div className="welcome">
-      <div className="welcome-hero">
-        <div>
-          <div className="eyebrow">
-            <span /> A LITTLE SPACE FOR IDEAS
-          </div>
-          <h1>
-            把美好，<em>慢慢畫出來。</em>
-          </h1>
-          <p className="intro">用一句話或一張照片，開始創作。</p>
+      <div className="eyebrow">
+        <span /> A LITTLE SPACE FOR IDEAS
+      </div>
+      <h1>
+        把美好，<em>慢慢畫出來。</em>
+      </h1>
+      <p className="intro">用一句話或一張照片，開始創作。</p>
+      <div className="paper-art" aria-hidden="true">
+        <div className="art-card art-back">
+          <div className="art-sun" />
+          <div className="art-hill" />
         </div>
-        <div className="paper-art" aria-hidden="true">
-          <div className="art-card art-back">
-            <div className="art-sun" />
-            <div className="art-hill" />
-          </div>
-          <div className="art-card art-front">
-            <div className="art-flower">
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-              <b />
-            </div>
+        <div className="art-card art-front">
+          <div className="art-flower">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <b />
           </div>
         </div>
+        <div className="art-spark">✧</div>
       </div>
       <section className="card setup-card">
         <div className="section-kicker">只需設定一次</div>
@@ -318,9 +333,7 @@ function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; noti
           前往 Runware 取得 API Key <ExternalLink size={13} />
         </a>
       </section>
-      <p className="welcome-privacy">
-        <ShieldCheck size={16} /> Key 與作品保存在這台裝置；生成內容會傳送至 Runware。
-      </p>
+      <Privacy />
     </div>
   );
 }
@@ -1181,7 +1194,7 @@ export default function App() {
   };
 
   return (
-    <main className="shell">
+    <main className={`shell${apiKey ? '' : ' welcome-shell'}`}>
       <div className="landscape-lock" role="status">
         <Smartphone size={46} />
         <strong>請將手機轉回直向</strong>

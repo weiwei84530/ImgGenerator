@@ -1940,59 +1940,21 @@ footer a {
   height: 40px;
 }
 
-.welcome {
-  padding-top: 18px;
+.welcome-shell .topbar {
+  min-height: auto;
+  padding: calc(24px + env(safe-area-inset-top)) 0 22px;
 }
-.welcome-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 2px;
+.welcome-shell .brand {
+  gap: 11px;
+  font-size: 19px;
 }
-.welcome h1 {
-  font-size: 28px;
-  line-height: 1.45;
-  margin-top: 7px;
+.welcome-shell .brand-symbol {
+  width: 42px;
+  height: 44px;
+  border-radius: 14px 14px 14px 4px;
 }
-.welcome .intro {
-  margin-top: 4px;
-  line-height: 1.55;
-  font-size: 14px;
-}
-.welcome .paper-art {
-  display: none;
-}
-.welcome .setup-card {
-  margin: 15px 0 9px;
-  padding: 18px;
-}
-.welcome .setup-card h2 {
-  margin-bottom: 10px;
-}
-.welcome .setup-card .primary {
-  margin-top: 12px;
-}
-.welcome .setup-card .hint {
-  margin-top: 7px;
-  line-height: 1.45;
-  font-size: 11px;
-}
-.welcome .small-link {
-  margin-top: 8px;
-}
-.welcome-privacy {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 7px;
-  padding: 4px 2px;
-  color: #788474;
-  font-size: 11px;
-  line-height: 1.55;
-}
-.welcome-privacy svg {
-  margin-top: 1px;
+.welcome-shell .brand-symbol svg {
+  width: 21px;
 }
 
 .video-create-card .create-cta {
@@ -2227,18 +2189,6 @@ footer a {
   display: none;
 }
 
-@media (min-width: 600px) {
-  .welcome .paper-art {
-    display: block;
-    width: 140px;
-    height: 110px;
-    flex: 0 0 140px;
-    margin: -12px 0;
-    transform: scale(0.52);
-    transform-origin: left center;
-  }
-}
-
 @media (max-width: 390px) {
   .brand small,
   .header-tools .connected b {
@@ -2250,9 +2200,6 @@ footer a {
   }
   .header-tools .balance span {
     display: none;
-  }
-  .welcome h1 {
-    font-size: 25px;
   }
 }
 
