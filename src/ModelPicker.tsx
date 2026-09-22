@@ -13,6 +13,7 @@ const providerLogos = {
   banana: googleLogo,
   gpt: openaiLogo,
   gptFlare: openaiLogo,
+  gptSunburst: openaiLogo,
   flux: bflLogo,
   seedream: bytedanceLogo,
   kling: klingLogo,

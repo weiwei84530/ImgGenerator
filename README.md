@@ -11,16 +11,22 @@
 
 Key 驗證成功後會保存到此瀏覽器。設定中可以更換 Key、移除 Key、控制金額顯示、匯出／還原備份與清除資料。
 
+尚未取得 Key 時可以選擇「先逛逛畫室」，瀏覽、編輯作品及備份；生成前必須設定 Key。略過只限這次開啟，重新整理或再次造訪仍會回到設定服務頁。重新輸入 Key 時，驗證成功才會替換舊 Key，完成或取消後返回原畫面。
+
+導覽列會顯示服務檢查狀態。開啟網站、恢復連線、回到頁面及生成完成時會查詢餘額，也可點選狀態重新檢查。隱藏餘額與費用僅影響顯示，不停止服務檢查或預估計算；查詢權限不足與網路異常顯示「暫時無法確認」，不直接判定 Key 失效。
+
+設定中的「暫存與備份」顯示保存在瀏覽器的參考照片、圖片與影片檔案大小。刪除單份作品會釋出不再被其他作品使用的檔案；「刪除所有作品」保留 Key 與偏好，「清除資料並重設服務」則一併移除。
+
 圖片與影片分別記住上次選取的模型、共用及進階參數，下次建立同類別作品時沿用；不自動帶入描述或照片。這些偏好僅保存在目前瀏覽器，清除全部資料時重設。備份保存各作品設定，不包含裝置偏好。
 
 ## 模型
 
-| 類別 | 模型                                                             | 輸入               |
-| ---- | ---------------------------------------------------------------- | ------------------ |
-| 圖片 | Nano Banana 2、GPT Image 2.5 Flare、FLUX.2 Pro、Seedream 5.0 Pro | 文字、參考照片修改 |
-| 影片 | Kling 3.0 Standard、Seedance 2.0 Fast、Veo 3.1 Fast              | 文字、單張起始照片 |
+| 類別 | 模型                                                                | 輸入               |
+| ---- | ------------------------------------------------------------------- | ------------------ |
+| 圖片 | Nano Banana 2、GPT Image 2.5 Sunburst、FLUX.2 Pro、Seedream 5.0 Pro | 文字、參考照片修改 |
+| 影片 | Kling 3.0 Standard、Seedance 2.0 Fast、Veo 3.1 Fast                 | 文字、單張起始照片 |
 
-首次使用時，圖片預選 Nano Banana 2 與 GPT Image 2.5 Flare；影片預選 Kling 3.0 Standard，每個模型一支、4 秒、720p，聲音關閉。可以多選模型比較結果，各模型分別計費。文字聊天尚未提供。舊作品保留原本模型名稱；開啟舊圖片草稿時，GPT Image 2 的編輯選項改用 Flare。
+首次使用時，圖片預選 Nano Banana 2 與 GPT Image 2.5 Sunburst；影片預選 Kling 3.0 Standard，每個模型一支、4 秒、720p，聲音關閉。可以多選模型比較結果，各模型分別計費。文字聊天尚未提供。舊作品保留原本模型名稱；開啟舊圖片草稿時，GPT Image 2 與 Flare 的編輯選項改用 Sunburst。
 
 ## 資料與隱私
 
@@ -62,7 +68,7 @@ npm run test:e2e
 - 影片提供 4／6／8 秒、720p；僅選 Veo 時可使用 1080p。每個模型每次可生成 1–2 支 MP4。Veo 文字生影片支援直向與橫向，另外兩個模型也支援方形。
 - 有起始照片時，影片比例由照片與模型支援能力決定，不強制套用文字生影片的比例；Veo 使用補邊模式。聲音由模型生成，開啟時可能增加費用，實際效果依模型而異。
 - 影片保存上限為單檔 100 MB。瀏覽器無法內播時顯示下載提示，可下載後用裝置播放器開啟。
-- 模型選單依 Runware 公開價目顯示目前設定的單張／單支預估費用，底部加總所選模型與數量。GPT Image 2.5 Flare 依 token 用量計費；無法可靠估算的設定會說明原因，不以範例價格代替。完成後顯示服務商回傳的 USD 實際費用。隱藏餘額與費用時，同時隱藏所有金額與估價說明。餘額讀取受帳戶權限限制，失敗會明示無法讀取。
+- 模型選單依 Runware 公開價目顯示目前設定的單張／單支預估費用，底部加總所選模型與數量。GPT Image 2.5 Sunburst 依 token 用量計費；無法可靠估算的設定會說明原因，不以範例價格代替。完成後顯示服務商回傳的 USD 實際費用。隱藏餘額與費用時，同時隱藏所有金額與估價說明。餘額讀取受帳戶權限限制，失敗會明示無法讀取。
 - ZIP 匯出限制為媒體合計 240 MB；還原上限為壓縮檔 250 MB、解壓資料 500 MB、單一檔案 100 MB。支援舊版圖片備份。備份仍可能受手機記憶體限制，超過上限時請先下載重要作品，再分批整理。
 - 本機已保存的作品可在已開啟網頁中離線查看；未提供 Service Worker，因此不保證離線重新載入整個網站。
 
@@ -70,7 +76,7 @@ Runware 參數依 [Nano Banana 2](https://runware.ai/docs/models/google-nano-ban
 
 新增模型依 [FLUX.2 Pro](https://runware.ai/docs/models/bfl-flux-2-pro)、[Seedream 5.0 Pro](https://runware.ai/docs/models/bytedance-seedream-5-0-pro)、[Kling 3.0 Standard](https://runware.ai/docs/models/klingai-video-3-0-standard)、[Seedance 2.0 Fast](https://runware.ai/docs/models/bytedance-seedance-2-0-fast) 與 [Veo 3.1 Fast](https://runware.ai/docs/models/google-veo-3-1-fast) 官方文件實作，並以少量真實生成核對。
 
-GPT Image 2.5 Flare 依 [Runware 官方文件](https://runware.ai/docs/models/openai-gpt-image-2-5-flare) 串接，使用 `openai:gpt-image@2.5-flare` 與 `settings.quality`，已驗證模擬 API 請求及流程，尚未執行 Flare 真實付費生成。
+GPT Image 2.5 Sunburst 依 [OpenAI 官方模型文件](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst) 與 [Runware 模型文件](https://runware.ai/docs/models/openai-gpt-image-2-5-sunburst) 串接，使用 `openai:gpt-image@2.5-sunburst`、`settings.quality` 與 `settings.background`，已驗證模擬 API 請求及流程，尚未執行 Sunburst 真實付費生成。
 
 ## 部署
 

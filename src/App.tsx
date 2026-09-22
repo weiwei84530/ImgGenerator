@@ -25,7 +25,7 @@ import {
   Smartphone,
   Maximize2,
 } from 'lucide-react';
-import { clearWorks, getMedia, removeWork, saveWork, snapshot } from './db';
+import { clearWorks, getMedia, removeWork, saveWork, snapshot, storageUsage } from './db';
 import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
 import { ModelPicker, ProviderLogo } from './ModelPicker';
@@ -40,7 +40,7 @@ import {
   saveKey,
   savePreferences,
 } from './preferences';
-import { fetchBalance, keyTag, validateKey } from './runware';
+import { ApiError, fetchBalance, isCredentialError, keyTag, validateKey } from './runware';
 import { estimateModelCost, type ModelEstimate } from './pricing';
 import { visibleWorks, workPreview } from './work-list';
 import {
@@ -58,6 +58,12 @@ import {
 const REPO = 'https://github.com/weiwei84530/ImgGenerator';
 const STUDIO = 'https://weiweistudio.com';
 const STORAGE_NOTE = '圖像只暫存在瀏覽器；喜歡的作品請記得下載到裝置，避免遺失。';
+const formatBytes = (bytes: number) =>
+  bytes === 0
+    ? '0 KB'
+    : bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+      : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const money = (value: number) => `US$ ${value.toFixed(4).replace(/0{1,2}$/, '')}`;
 const date = (value: number) =>
   new Intl.DateTimeFormat('zh-TW', {
@@ -67,6 +73,18 @@ const date = (value: number) =>
     minute: '2-digit',
   }).format(value);
 type Notify = (message: string) => void;
+interface ToastMessage {
+  id: number;
+  message: string;
+}
+
+function Toast({ notice }: { notice: ToastMessage }) {
+  return (
+    <div key={notice.id} className="toast" role="status">
+      <span>{notice.message}</span>
+    </div>
+  );
+}
 type Screen = 'home' | 'work' | 'library';
 type WorkTab = 'edit' | 'results';
 interface NavigationState {
@@ -74,7 +92,7 @@ interface NavigationState {
   screen: Screen;
   workId?: string;
   workTab?: WorkTab;
-  overlay?: 'settings' | 'viewer' | 'fullscreen';
+  overlay?: 'settings' | 'viewer' | 'fullscreen' | 'key';
   jobId?: string;
 }
 
@@ -188,7 +206,7 @@ function Modal({
   close: () => void;
   children: ReactNode;
   wide?: boolean;
-  notice?: string;
+  notice?: ToastMessage | null;
   fullscreen?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -222,11 +240,7 @@ function Modal({
           <X />
         </button>
       </div>
-      {notice && (
-        <div className="modal-notice" role="status">
-          {notice}
-        </div>
-      )}
+      {notice && <Toast notice={notice} />}
       {children}
     </dialog>
   );
@@ -234,35 +248,43 @@ function Modal({
 
 function KeyForm({
   onSuccess,
-  notify,
   replacing = false,
 }: {
   onSuccess: (key: string) => void;
-  notify: Notify;
   replacing?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const mounted = useRef(false);
+  const submitting = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        if (busy) return;
+        if (submitting.current) return;
+        submitting.current = true;
         setBusy(true);
         setError('');
         try {
           const key = input.trim();
           if (!key) throw new Error('請輸入 Runware API Key。');
           await validateKey(key);
+          if (!mounted.current) return;
           saveKey(key);
           onSuccess(key);
           setInput('');
-          if (replacing) notify('已更換 API Key。');
         } catch (err) {
           setError(err instanceof Error ? err.message : '無法連線，請稍後再試。');
         } finally {
+          submitting.current = false;
           setBusy(false);
         }
       }}
@@ -322,7 +344,17 @@ function Privacy() {
   );
 }
 
-function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; notify: Notify }) {
+function Welcome({
+  onSuccess,
+  onSkip,
+  returning = false,
+  replacing = false,
+}: {
+  onSuccess: (key: string) => void;
+  onSkip: () => void;
+  returning?: boolean;
+  replacing?: boolean;
+}) {
   return (
     <div className="welcome">
       <div className="eyebrow">
@@ -347,17 +379,26 @@ function Welcome({ onSuccess, notify }: { onSuccess: (key: string) => void; noti
             <b />
           </div>
         </div>
-        <svg className="art-spark" viewBox="0 0 30 30">
+        <svg className="art-spark" viewBox="0 0 30 30" aria-hidden="true">
+          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
+        </svg>
+        <svg className="art-spark spark-gold" viewBox="0 0 30 30" aria-hidden="true">
+          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#caa75a" />
+        </svg>
+        <svg className="art-spark spark-small" viewBox="0 0 30 30" aria-hidden="true">
           <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
         </svg>
       </div>
       <section className="card setup-card">
         <div className="section-kicker">只需設定一次</div>
         <h2>設定服務</h2>
-        <KeyForm onSuccess={onSuccess} notify={notify} />
+        <KeyForm onSuccess={onSuccess} replacing={replacing} />
         <a className="small-link" href="https://runware.ai" target="_blank" rel="noreferrer">
           前往 Runware 取得 API Key <ExternalLink size={13} />
         </a>
+        <button type="button" className="secondary full guest-entry" onClick={onSkip}>
+          {returning ? '取消，返回畫室' : '先逛逛畫室'}
+        </button>
       </section>
       <Privacy />
     </div>
@@ -418,21 +459,19 @@ function Workspace({
   const availableModels = modelsFor(video ? 'video' : 'image');
   const maxRefs = video ? 1 : 4;
   const advancedModels = draft.models.filter((model) =>
-    ['banana', 'gpt', 'gptFlare', 'seedream', 'kling'].includes(model),
+    ['banana', 'gpt', 'gptFlare', 'gptSunburst', 'seedream', 'kling'].includes(model),
   );
   useEffect(() => {
     let live = true;
     setEstimates({});
-    if (showMoney) {
-      for (const model of modelsFor(isVideo(draft) ? 'video' : 'image'))
-        void estimateModelCost(model, draft).then((estimate) => {
-          if (live) setEstimates((values) => ({ ...values, [model]: estimate }));
-        });
-    }
+    for (const model of modelsFor(isVideo(draft) ? 'video' : 'image'))
+      void estimateModelCost(model, draft).then((estimate) => {
+        if (live) setEstimates((values) => ({ ...values, [model]: estimate }));
+      });
     return () => {
       live = false;
     };
-  }, [draft, showMoney]);
+  }, [draft]);
   const selectedEstimates = draft.models.map((model) => estimates[model]);
   const priceLoading = selectedEstimates.some((estimate) => !estimate);
   const unknownPrices = draft.models.filter((model) => estimates[model]?.amount === null);
@@ -469,6 +508,10 @@ function Workspace({
   };
   const submit = async (target = draft) => {
     if (submitLock.current || active || uploading) return;
+    if (!apiKey) {
+      notify('尚未設定 API Key，請先到畫室設定連線後再生成。');
+      return;
+    }
     if (!navigator.onLine) {
       notify('目前離線，請連上網路後再開始生成。');
       return;
@@ -726,7 +769,7 @@ function Workspace({
                         />
                         參考網路資料生成圖片
                       </label>
-                    ) : model === 'gpt' || model === 'gptFlare' ? (
+                    ) : model === 'gpt' || model === 'gptFlare' || model === 'gptSunburst' ? (
                       <>
                         <label className="setting-row">
                           繪製品質
@@ -957,6 +1000,10 @@ function Workspace({
                                     <button
                                       className="secondary"
                                       onClick={async () => {
+                                        if (!apiKey) {
+                                          notify('尚未設定 API Key，請先到畫室設定服務。');
+                                          return;
+                                        }
                                         if (job.keyTag !== (await keyTag(apiKey))) {
                                           notify(
                                             '請切換回當時使用的 Key，才能查詢原任務。備份紀錄無法查詢。',
@@ -989,10 +1036,7 @@ function Workspace({
                   </div>
                 </section>
               ))}
-              <div className="local-note">
-                <ShieldCheck size={17} />
-                {STORAGE_NOTE}
-              </div>
+              <div className="local-note">{STORAGE_NOTE}</div>
             </>
           )}
         </div>
@@ -1018,6 +1062,8 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
   const [apiKey, setApiKey] = useState(readKey);
+  const [guestMode, setGuestMode] = useState(false);
+  const [rekeying, setRekeying] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
   const [screen, setScreen] = useState<Screen>('home');
   const [workTab, setWorkTab] = useState<WorkTab>('edit');
@@ -1031,21 +1077,32 @@ export default function App() {
   const [libraryLimit, setLibraryLimit] = useState(10);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const toastSequence = useRef(0);
   const [dataBusy, setDataBusy] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState(false);
+  const [connectionState, setConnectionState] = useState<
+    'unset' | 'checking' | 'ready' | 'invalid' | 'unavailable'
+  >(apiKey ? 'checking' : 'unset');
+  const [storageBytes, setStorageBytes] = useState<number | null>();
   const active = jobs.some(isActive);
-  const notify = useCallback<Notify>((message) => setToast(message), []);
+  const notify = useCallback<Notify>(
+    (message) => setToast({ id: ++toastSequence.current, message }),
+    [],
+  );
+  const enteredStudio = Boolean(apiKey || guestMode);
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
   const balanceSequence = useRef(0);
+  const balanceRequest = useRef<{ key: string; sequence: number } | null>(null);
   const applyNavigation = useCallback((state: NavigationState) => {
     setScreen(state.screen);
     setWorkId(state.workId ?? '');
     setWorkTab(state.workTab ?? 'edit');
     setSettings(state.overlay === 'settings');
+    setRekeying(state.overlay === 'key');
     setFullscreen(state.overlay === 'fullscreen');
     setImageJob(
       (state.overlay === 'viewer' || state.overlay === 'fullscreen') && state.jobId
@@ -1067,6 +1124,7 @@ export default function App() {
     if (state?.studio && state.overlay === overlay) history.back();
     else {
       setSettings(false);
+      setRekeying(false);
       setImageJob(null);
       setFullscreen(false);
     }
@@ -1084,18 +1142,37 @@ export default function App() {
     return () => window.removeEventListener('popstate', pop);
   }, [applyNavigation]);
   const refreshBalance = useCallback(async () => {
-    if (!apiKey || !preferences.showMoney) return;
+    if (!apiKey || !navigator.onLine) {
+      ++balanceSequence.current;
+      balanceRequest.current = null;
+      setBalance(null);
+      setBalanceLoading(false);
+      setConnectionState(apiKey ? 'unavailable' : 'unset');
+      return;
+    }
+    if (balanceRequest.current?.key === apiKey) return;
     const sequence = ++balanceSequence.current;
+    balanceRequest.current = { key: apiKey, sequence };
     setBalanceLoading(true);
+    setConnectionState('checking');
     try {
       const value = await fetchBalance(apiKey);
-      if (sequence === balanceSequence.current) setBalance(value);
-    } catch {
-      if (sequence === balanceSequence.current) setBalance(null);
+      if (sequence === balanceSequence.current) {
+        setBalance(value);
+        setConnectionState('ready');
+      }
+    } catch (error) {
+      if (sequence === balanceSequence.current) {
+        setBalance(null);
+        setConnectionState(
+          error instanceof ApiError && isCredentialError(error.code) ? 'invalid' : 'unavailable',
+        );
+      }
     } finally {
       if (sequence === balanceSequence.current) setBalanceLoading(false);
+      if (balanceRequest.current?.sequence === sequence) balanceRequest.current = null;
     }
-  }, [apiKey, preferences.showMoney]);
+  }, [apiKey]);
 
   useEffect(() => {
     let live = true;
@@ -1131,7 +1208,7 @@ export default function App() {
   }, [preferences, notify]);
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(''), 7000);
+    const timer = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
@@ -1144,13 +1221,35 @@ export default function App() {
   }, []);
   useEffect(() => {
     ++balanceSequence.current;
+    balanceRequest.current = null;
     setBalance(null);
     setBalanceLoading(false);
-    if (preferences.showMoney) void refreshBalance();
+    void refreshBalance();
     return () => {
       ++balanceSequence.current;
     };
-  }, [refreshBalance, preferences.showMoney]);
+  }, [refreshBalance]);
+  useEffect(() => {
+    if (!settings) return;
+    let live = true;
+    let sequence = 0;
+    const refreshStorage = async () => {
+      const ticket = ++sequence;
+      try {
+        const bytes = await storageUsage();
+        if (live && ticket === sequence) setStorageBytes(bytes);
+      } catch {
+        if (live && ticket === sequence) setStorageBytes(null);
+      }
+    };
+    setStorageBytes(undefined);
+    void refreshStorage();
+    window.addEventListener('studio-change', refreshStorage);
+    return () => {
+      live = false;
+      window.removeEventListener('studio-change', refreshStorage);
+    };
+  }, [settings]);
   const completed = jobs.filter((j) => j.status === 'succeeded').length;
   useEffect(() => {
     if (completed) void refreshBalance();
@@ -1158,6 +1257,7 @@ export default function App() {
   useEffect(() => {
     const recover = () => {
       setOffline(!navigator.onLine);
+      void refreshBalance();
       if (apiKey && navigator.onLine) void resumeJobs(apiKey).catch(() => setStorageError(true));
     };
     const visible = () => {
@@ -1172,7 +1272,7 @@ export default function App() {
       window.removeEventListener('offline', recover);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [apiKey]);
+  }, [apiKey, refreshBalance]);
 
   useEffect(() => {
     setActualSize(null);
@@ -1208,9 +1308,26 @@ export default function App() {
   };
   const current = works.find((w) => w.id === workId);
   const updateKey = (key: string) => {
+    const replacing = Boolean(apiKey);
     setApiKey(key);
-    if (settings) closeOverlay('settings');
+    setGuestMode(false);
+    setConnectionState('checking');
+    if (key === apiKey) void refreshBalance();
+    notify(replacing ? '已更換 API Key。' : '服務已連線，開始創作吧。');
+    if (rekeying) closeOverlay('key');
   };
+  const enterKeySetup = () => {
+    const state: NavigationState = { studio: true, screen, workId, workTab, overlay: 'key' };
+    history.replaceState(state, '');
+    applyNavigation(state);
+  };
+  const connectionLabel = {
+    unset: '未設定服務',
+    checking: '檢查中',
+    ready: '服務已就緒',
+    invalid: '金鑰不可用',
+    unavailable: '暫時無法確認',
+  }[connectionState];
   const deleteWork = async (work: Work) => {
     if (jobs.some((j) => j.workId === work.id && isActive(j))) {
       notify('請等生成完成後再刪除。');
@@ -1251,13 +1368,23 @@ export default function App() {
             拾光畫室<small>little moments, made visible</small>
           </span>
         </button>
-        {apiKey && (
+        {enteredStudio && !rekeying && (
           <div className="header-tools">
-            <span className="connected" aria-label="Runware 已設定">
+            <button
+              className={`connected ${connectionState}`}
+              aria-label={`服務狀態：${connectionLabel}`}
+              title={apiKey ? `${connectionLabel}，點此重新檢查` : '未設定服務，點此開啟設定'}
+              onClick={() =>
+                apiKey
+                  ? void refreshBalance()
+                  : navigate({ screen, workId, workTab, overlay: 'settings' })
+              }
+              disabled={balanceLoading}
+            >
               <span />
-              <b>已連線</b>
-            </span>
-            {preferences.showMoney && (
+              <b>{connectionLabel}</b>
+            </button>
+            {apiKey && preferences.showMoney && (
               <MoneyBadge
                 balance={balance}
                 loading={balanceLoading}
@@ -1290,8 +1417,14 @@ export default function App() {
           無法讀取本機儲存。請確認瀏覽器允許儲存資料，暫時不要清除瀏覽器資料。
         </div>
       )}
-      {!apiKey ? (
-        <Welcome onSuccess={updateKey} notify={notify} />
+      {rekeying || !enteredStudio ? (
+        <Welcome
+          key={rekeying ? 'rekey' : 'welcome'}
+          onSuccess={updateKey}
+          onSkip={() => (rekeying ? closeOverlay('key') : setGuestMode(true))}
+          returning={rekeying}
+          replacing={rekeying && Boolean(apiKey)}
+        />
       ) : loading ? (
         <div className="empty-state">
           <LoaderCircle className="spin" />
@@ -1356,7 +1489,7 @@ export default function App() {
                 <div>
                   <strong>我的作品</strong>
                   <small>
-                    <ShieldCheck size={14} /> {STORAGE_NOTE}
+                    {works.length} 份創作，{completed} 個保存在瀏覽器的成果
                   </small>
                 </div>
                 <ArrowRight size={19} />
@@ -1475,9 +1608,7 @@ export default function App() {
                   )}
                 </div>
               )}
-              <p className="hint">
-                各裝置分開保存。清除瀏覽器資料或儲存空間被回收，都可能遺失作品；請定期到設定匯出備份。
-              </p>
+              <p className="hint">{STORAGE_NOTE}</p>
             </>
           )}
         </>
@@ -1490,15 +1621,8 @@ export default function App() {
           GitHub
         </a>
       </footer>
-      {toast && !settings && !imageJob && (
-        <div className="toast" role="status">
-          <span>{toast}</span>
-          <button aria-label="關閉通知" onClick={() => setToast('')}>
-            <X size={17} />
-          </button>
-        </div>
-      )}
-      {settings && (
+      {toast && !settings && !imageJob && <Toast notice={toast} />}
+      {enteredStudio && settings && (
         <Modal
           title="畫室設定"
           notice={toast}
@@ -1507,7 +1631,7 @@ export default function App() {
           }}
         >
           <div className="modal-content">
-            {preferences.showMoney && (
+            {apiKey && preferences.showMoney && (
               <section className="balance-panel" aria-label="餘額使用進度">
                 <div className="balance-panel-heading">
                   <div>
@@ -1567,23 +1691,31 @@ export default function App() {
               </summary>
               <div className="settings-section-body">
                 <p className="hint">
-                  已保存 Runware API Key。更換 Key 不會刪除作品，舊任務需用原 Key 查詢。
+                  {apiKey
+                    ? '已保存 Runware API Key。更換 Key 不會刪除作品，舊任務需用原 Key 查詢。'
+                    : '尚未設定 Runware API Key；你可以先瀏覽作品，生成前再設定服務。'}
                 </p>
-                {active ? (
+                {apiKey && active ? (
                   <p className="notice">生成完成後即可更換或移除 Key。</p>
-                ) : (
+                ) : apiKey ? (
                   <div className="replace-key">
-                    <h3>更換 API Key</h3>
-                    <KeyForm replacing onSuccess={updateKey} notify={notify} />
+                    <button className="secondary full" onClick={enterKeySetup}>
+                      重新輸入 API Key
+                    </button>
                   </div>
+                ) : (
+                  <button className="secondary full" onClick={enterKeySetup}>
+                    輸入 API Key
+                  </button>
                 )}
                 <button
                   className="text-button danger"
-                  disabled={active || dataBusy}
+                  disabled={!apiKey || active || dataBusy}
                   onClick={() => {
                     if (confirm('移除這台裝置的 API Key？作品會保留，下次使用需重新設定 Key。')) {
                       saveKey('');
                       setApiKey('');
+                      setGuestMode(false);
                       closeOverlay('settings');
                     }
                   }}
@@ -1594,9 +1726,21 @@ export default function App() {
             </details>
             <details className="settings-section">
               <summary>
-                作品與備份 <ChevronDown size={17} />
+                暫存與備份 <ChevronDown size={17} />
               </summary>
               <div className="settings-section-body">
+                <section className="storage-summary" aria-label="作品暫存大小">
+                  <span>目前作品暫存</span>
+                  <strong>
+                    {storageBytes === undefined
+                      ? '計算中…'
+                      : storageBytes === null
+                        ? '暫時無法讀取'
+                        : formatBytes(storageBytes)}
+                  </strong>
+                  <small>這裡包含瀏覽器中的參考照片、生成圖片與影片。</small>
+                  <small>刪除「我的作品」中的作品，就能釋出暫存空間。</small>
+                </section>
                 <p className="hint">
                   備份包含圖片、影片、描述與作品設定，不含 API Key。請妥善保存；更換裝置後可以還原。
                 </p>
@@ -1678,39 +1822,43 @@ export default function App() {
                     }
                   }}
                 >
-                  清除所有作品
+                  刪除所有作品
                 </button>
-                <button
-                  className="text-button danger"
-                  disabled={active || dataBusy}
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
+                <div className="reset-service">
+                  <p className="hint">需要重新開始？下方會一併刪除作品與服務設定。</p>
+                  <button
+                    className="text-button danger"
+                    disabled={active || dataBusy}
+                    onClick={async () => {
+                      if (
+                        !confirm(
+                          '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
+                        )
                       )
-                    )
-                      return;
-                    setDataBusy(true);
-                    try {
-                      await clearWorks();
-                      saveKey('');
-                      resetPreferences();
-                      clearDraftDefaults();
-                      setApiKey('');
-                      setPreferences(readPreferences());
-                      const homeState: NavigationState = { studio: true, screen: 'home' };
-                      history.replaceState(homeState, '');
-                      applyNavigation(homeState);
-                      notify('已重設這台裝置。');
-                    } catch {
-                      notify('重設未完成，請稍後再試。');
-                    } finally {
-                      setDataBusy(false);
-                    }
-                  }}
-                >
-                  清除資料並重設服務
-                </button>
+                        return;
+                      setDataBusy(true);
+                      try {
+                        await clearWorks();
+                        saveKey('');
+                        resetPreferences();
+                        clearDraftDefaults();
+                        setApiKey('');
+                        setGuestMode(false);
+                        setPreferences(readPreferences());
+                        const homeState: NavigationState = { studio: true, screen: 'home' };
+                        history.replaceState(homeState, '');
+                        applyNavigation(homeState);
+                        notify('已重設這台裝置。');
+                      } catch {
+                        notify('重設未完成，請稍後再試。');
+                      } finally {
+                        setDataBusy(false);
+                      }
+                    }}
+                  >
+                    清除資料並重設服務
+                  </button>
+                </div>
               </div>
             </details>
             <div className="studio-credit">
@@ -1722,7 +1870,7 @@ export default function App() {
           </div>
         </Modal>
       )}
-      {imageJob?.mediaId && (
+      {enteredStudio && imageJob?.mediaId && (
         <Modal
           title={models[imageJob.model].name}
           notice={toast}

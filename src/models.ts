@@ -33,6 +33,14 @@ export const models = {
     note: '快速創作・細膩改圖',
     letter: 'G',
   },
+  gptSunburst: {
+    kind: 'image',
+    name: 'GPT Image 2.5 Sunburst',
+    maker: 'OPENAI',
+    air: 'openai:gpt-image@2.5-sunburst',
+    note: '精準改圖・細膩構圖',
+    letter: 'G',
+  },
   seedream: {
     kind: 'image',
     name: 'Seedream 5.0 Pro',
@@ -68,13 +76,21 @@ export const models = {
 } as const;
 
 export const modelsFor = (kind: WorkKind) =>
-  (Object.keys(models) as ModelId[]).filter((id) => id !== 'gpt' && models[id].kind === kind);
+  (Object.keys(models) as ModelId[]).filter(
+    (id) => !['gpt', 'gptFlare'].includes(id) && models[id].kind === kind,
+  );
 
 // Upgrade editable selections while preserving historical jobs and their model identity.
 export function currentDraft(draft: Draft): Draft {
   return {
     ...draft,
-    models: [...new Set(draft.models.map((id) => (id === 'gpt' ? ('gptFlare' as const) : id)))],
+    models: [
+      ...new Set(
+        draft.models.map((id) =>
+          id === 'gpt' || id === 'gptFlare' ? ('gptSunburst' as const) : id,
+        ),
+      ),
+    ],
   };
 }
 export const promptLimit = (draft: Draft) =>
@@ -232,7 +248,7 @@ export function buildRequest(
     ...(references.length ? { inputs: { referenceImages: references } } : {}),
     ...(model === 'banana'
       ? { providerSettings: { google: { webSearch: draft.googleSearch } } }
-      : model === 'gptFlare'
+      : model === 'gptSunburst' || model === 'gptFlare'
         ? { settings: { quality: draft.gptQuality, background: draft.gptBackground } }
         : model === 'gpt'
           ? {

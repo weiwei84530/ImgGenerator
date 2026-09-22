@@ -67,6 +67,18 @@ export async function snapshot() {
     jobs: jobs.sort((a, b) => a.createdAt - b.createdAt),
   };
 }
+export async function storageUsage() {
+  // Walk one file at a time instead of cloning the entire media library into memory.
+  const tx = (await database).transaction('media');
+  let cursor = await tx.store.openCursor();
+  let total = 0;
+  while (cursor) {
+    total += cursor.value.bytes.byteLength;
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+  return total;
+}
 export async function addJobs(jobs: Job[]) {
   const tx = (await database).transaction('jobs', 'readwrite');
   const existing = await tx.store.index('workId').getAll(jobs[0].workId);

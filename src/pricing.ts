@@ -44,7 +44,7 @@ const rate = (rates: PricingRate[], unit: string, label?: RegExp) =>
   )?.amount;
 
 export function calculateModelEstimate(model: ModelId, draft: Draft, rates: PricingRate[]) {
-  if (model === 'gpt' || model === 'gptFlare') return null;
+  if (model === 'gpt' || model === 'gptFlare' || model === 'gptSunburst') return null;
 
   if (model === 'banana') {
     if (draft.googleSearch) return null;
@@ -104,6 +104,7 @@ export interface ModelEstimate {
 export async function estimateModelCost(model: ModelId, draft: Draft): Promise<ModelEstimate> {
   if (model === 'gpt' || model === 'gptFlare')
     return { amount: null, reason: '依實際用量計費，無法預估' };
+  if (model === 'gptSunburst') return { amount: null, reason: '依 token 實際用量計費，無法預估' };
   if (model === 'banana' && draft.googleSearch)
     return { amount: null, reason: '含網路搜尋，用量未定，暫無法預估' };
   if (model === 'flux' && draft.refs.length)

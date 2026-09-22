@@ -2,6 +2,7 @@ export const modelIds = [
   'banana',
   'gpt',
   'gptFlare',
+  'gptSunburst',
   'flux',
   'seedream',
   'kling',
@@ -65,7 +66,7 @@ export interface Balance {
 }
 export const newDraft = (): Draft => ({
   prompt: '',
-  models: ['banana', 'gptFlare'],
+  models: ['banana', 'gptSunburst'],
   ratio: 'portrait',
   resolution: '1K',
   count: 1,

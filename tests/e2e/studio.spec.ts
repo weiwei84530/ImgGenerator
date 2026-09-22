@@ -28,7 +28,7 @@ test('rapid clicks submit once and reset removes saved data and credentials', as
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '顯示偏好');
   await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
-  await openSettingsSection(page, '作品與備份');
+  await openSettingsSection(page, '暫存與備份');
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBeNull();
@@ -44,14 +44,15 @@ test('v2 model pricing, actual dimensions and fullscreen return preserve the wor
 }, testInfo) => {
   const api = await mockRunware(page);
   await setup(page);
-  await expect(page.locator('.toast')).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText('服務已連線');
+  await expect(page.locator('.toast')).toBeHidden({ timeout: 5000 });
   await expect(page.locator('footer a')).toHaveCount(1);
   await newWork(page);
   await expect(page.getByRole('button', { name: '替換 Nano Banana 2' })).toContainText(
     'US$ 0.0689／張',
   );
-  await expect(page.getByRole('button', { name: '替換 GPT Image 2.5 Flare' })).toContainText(
-    '依實際用量計費',
+  await expect(page.getByRole('button', { name: '替換 GPT Image 2.5 Sunburst' })).toContainText(
+    '依 token 實際用量計費',
   );
   await expect(page.locator('.cost-summary')).toContainText('總費用暫無法預估');
   await page.getByRole('button', { name: '新增模型', exact: true }).click();
@@ -62,7 +63,9 @@ test('v2 model pricing, actual dimensions and fullscreen return preserve the wor
   await expect(page.locator('.quantity-card')).toContainText('04');
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
-  const flareRequest = api.submitted.find((task) => task.model === 'openai:gpt-image@2.5-flare')!;
+  const flareRequest = api.submitted.find(
+    (task) => task.model === 'openai:gpt-image@2.5-sunburst',
+  )!;
   expect(flareRequest.settings).toEqual({ quality: 'auto', background: 'auto' });
   expect(flareRequest.providerSettings).toBeUndefined();
   await expect(page.locator('.result-meta img')).toHaveCount(2);
@@ -300,7 +303,8 @@ async function newWork(page: Page) {
 }
 async function openSettingsSection(page: Page, name: string) {
   const summary = page.locator('summary').filter({ hasText: name });
-  if ((await summary.getAttribute('aria-expanded')) !== 'true') await summary.click();
+  if (!(await summary.evaluate((element) => element.parentElement!.hasAttribute('open'))))
+    await summary.click();
 }
 
 test('category defaults remember parameters while new works keep prompts and references empty', async ({
@@ -309,7 +313,7 @@ test('category defaults remember parameters while new works keep prompts and ref
   await mockRunware(page);
   await setup(page);
   await newWork(page);
-  await page.getByLabel('移除 GPT Image 2.5 Flare').click();
+  await page.getByLabel('移除 GPT Image 2.5 Sunburst').click();
   await page.getByLabel('增加張數').click();
   await page.getByRole('button', { name: '方形', exact: false }).click();
   await page.getByLabel('拾光畫室首頁').click();
@@ -322,7 +326,7 @@ test('category defaults remember parameters while new works keep prompts and ref
   await page.getByLabel('拾光畫室首頁').click();
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await expect(page.getByLabel('移除 Nano Banana 2')).toBeVisible();
-  await expect(page.getByLabel('移除 GPT Image 2.5 Flare')).toHaveCount(0);
+  await expect(page.getByLabel('移除 GPT Image 2.5 Sunburst')).toHaveCount(0);
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   await expect(page.locator('.stepper')).toContainText('2 張');
   await page.getByLabel('拾光畫室首頁').click();
@@ -354,7 +358,7 @@ test('expanded image models generate alongside existing models and pass through 
     'bfl:5@1',
     'bytedance:seedream@5.0-pro',
     'google:4@3',
-    'openai:gpt-image@2.5-flare',
+    'openai:gpt-image@2.5-sunburst',
   ]);
   expect(api.submitted.every((t) => t.inputs?.referenceImages.length === 1)).toBe(true);
 });
@@ -398,11 +402,11 @@ test('video first-frame generation plays and downloads, hides costs, and survive
   expect((await downloadPromise).suggestedFilename()).toMatch(/\.mp4$/);
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '作品與備份');
+  await openSettingsSection(page, '暫存與備份');
   const backup = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await (await backup).path();
-  await page.getByRole('button', { name: '清除所有作品', exact: true }).click();
+  await page.getByRole('button', { name: '刪除所有作品', exact: true }).click();
   await page.getByLabel('還原備份', { exact: true }).setInputFiles(archive!);
   await expect(page.getByRole('status')).toContainText('已還原');
   expect(api.submitted).toHaveLength(3);
@@ -451,14 +455,34 @@ test('first-use validation, saved key, replacement, and hidden money preference'
   await expect(page.getByLabel('重新查詢餘額')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(0);
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '顯示偏好');
   const toggle = page.getByRole('switch', { name: /顯示餘額與費用/ });
   await expect(toggle).not.toBeChecked();
   await toggle.check();
   await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+  await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
+  await page.getByRole('button', { name: '取消，返回畫室' }).click();
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
+    'test-key-never-real',
+  );
+  await newWork(page);
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+  await page.getByLabel('Runware API Key', { exact: true }).fill('bad-key');
+  await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+  await expect(page.getByRole('alert')).toContainText('API Key 無效');
+  expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
+    'test-key-never-real',
+  );
   await page.getByLabel('Runware API Key', { exact: true }).fill('replacement-test-key');
   await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await expect(page.getByRole('status')).toHaveText('已更換 API Key。');
   await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
   await page.goto('/?costs=hidden');
   await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
@@ -512,7 +536,7 @@ test('partial failure preserves success and retries exactly one image', async ({
   await page.getByRole('button', { name: '重新生成這張' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   expect(api.submitted).toHaveLength(3);
-  expect(api.submitted[2].model).toBe('openai:gpt-image@2.5-flare');
+  expect(api.submitted[2].model).toBe('openai:gpt-image@2.5-sunburst');
 });
 
 test('interrupted submission reloads by polling the same task without another charge', async ({
@@ -521,7 +545,7 @@ test('interrupted submission reloads by polling the same task without another ch
   const api = await mockRunware(page, { interrupt: true });
   await setup(page);
   await newWork(page);
-  await page.getByRole('button', { name: '移除 GPT Image 2.5 Flare' }).click();
+  await page.getByRole('button', { name: '移除 GPT Image 2.5 Sunburst' }).click();
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
   await page.reload();
@@ -563,16 +587,20 @@ test('backup restore, deletion, key removal and offline images', async ({ page }
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '作品與備份');
+  await openSettingsSection(page, '暫存與備份');
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await downloaded;
   const path = await archive.path();
   expect(path).toBeTruthy();
-  await page.getByRole('button', { name: '清除所有作品', exact: true }).click();
+  const usage = page.getByLabel('作品暫存大小').locator('strong');
+  await expect(usage).toHaveText('1 KB');
+  await page.getByRole('button', { name: '刪除所有作品', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('已清除作品');
+  await expect(usage).toHaveText('0 KB');
   await page.getByLabel('還原備份', { exact: true }).setInputFiles(path!);
   await expect(page.getByRole('status')).toContainText('已還原 1 份作品');
+  await expect(usage).toHaveText('1 KB');
   await openSettingsSection(page, '服務連線');
   await page.getByRole('button', { name: '移除這台裝置的 Key' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
@@ -661,7 +689,7 @@ test('balance limit persists and advanced settings only appear when relevant', a
 
   await newWork(page);
   await page.getByLabel('移除 Nano Banana 2').click();
-  await page.getByLabel('移除 GPT Image 2.5 Flare').click();
+  await page.getByLabel('移除 GPT Image 2.5 Sunburst').click();
   await page.getByRole('button', { name: '新增模型' }).click();
   await page.getByRole('button', { name: '新增 FLUX.2 Pro', exact: true }).click();
   await expect(page.getByText('進階設定', { exact: true })).toHaveCount(0);
@@ -716,7 +744,7 @@ test('workspace tabs slide and model cards open directly without a select', asyn
   expect((await tabs.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom + 7);
   await page.screenshot({ path: testInfo.outputPath('model-options.png') });
   await expect(
-    page.getByRole('button', { name: '新增 GPT Image 2.5 Flare', exact: true }),
+    page.getByRole('button', { name: '新增 GPT Image 2.5 Sunburst', exact: true }),
   ).toHaveCount(0);
   await expect(page.getByLabel('選擇新增模型')).toHaveCount(0);
   await flux.focus();
@@ -755,7 +783,7 @@ test('model selectors replace in place, join option rows, and keep removal indep
   await banana.click();
   await expect(banana).toHaveAttribute('aria-expanded', 'true');
   await expect(
-    page.getByRole('button', { name: '改用 GPT Image 2.5 Flare', exact: true }),
+    page.getByRole('button', { name: '改用 GPT Image 2.5 Sunburst', exact: true }),
   ).toHaveCount(0);
   const flux = page.getByRole('button', { name: '改用 FLUX.2 Pro', exact: true });
   await flux.click();
@@ -766,7 +794,7 @@ test('model selectors replace in place, join option rows, and keep removal indep
   await expect(picker.locator('.model-trigger').first()).toHaveAccessibleName('替換 FLUX.2 Pro');
   await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
 
-  const gpt = page.getByRole('button', { name: '替換 GPT Image 2.5 Flare', exact: true });
+  const gpt = page.getByRole('button', { name: '替換 GPT Image 2.5 Sunburst', exact: true });
   await gpt.focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('button', { name: '改用 Nano Banana 2', exact: true })).toBeFocused();
@@ -818,10 +846,15 @@ test('model selectors replace in place, join option rows, and keep removal indep
   await gpt.click();
   await page.getByLabel('描述你的想法').click();
   await expect(gpt).toHaveAttribute('aria-expanded', 'false');
-  await page.getByLabel('移除 GPT Image 2.5 Flare', { exact: true }).click();
+  await page.getByLabel('移除 GPT Image 2.5 Sunburst', { exact: true }).click();
   await expect(picker.locator('.model-trigger')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '新增模型', exact: true })).toBeFocused();
-  for (const name of ['Nano Banana 2', 'GPT Image 2.5 Flare', 'FLUX.2 Pro', 'Seedream 5.0 Pro']) {
+  for (const name of [
+    'Nano Banana 2',
+    'GPT Image 2.5 Sunburst',
+    'FLUX.2 Pro',
+    'Seedream 5.0 Pro',
+  ]) {
     await page.getByRole('button', { name: '新增模型', exact: true }).click();
     await page.getByRole('button', { name: `新增 ${name}`, exact: true }).click();
   }
@@ -835,6 +868,209 @@ test('model selectors replace in place, join option rows, and keep removal indep
     picker.locator('[data-open="true"]').getByText('所有模型都已選取，可先移除其他模型再替換。'),
   ).toBeVisible();
   expect(api.submitted).toHaveLength(0);
+});
+
+test('guest browsing is temporary, blocks generation, and can set up service in place', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  await page.goto('/');
+  await page.screenshot({ path: testInfo.outputPath('welcome-sparkles.png'), fullPage: true });
+  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await expect(page.getByRole('button', { name: '服務狀態：未設定服務' })).toBeVisible();
+  await expect(page.getByLabel('重新查詢餘額')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /我的作品/ })).toContainText(
+    '0 份創作，0 個保存在瀏覽器的成果',
+  );
+  await newWork(page);
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await expect(page.getByRole('status')).toContainText('尚未設定 API Key');
+  expect(api.submitted).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath('guest-toast.png'), fullPage: true });
+  await page.getByLabel('設定', { exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '輸入 API Key', exact: true }).click();
+  await page.goBack();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '輸入 API Key', exact: true }).click();
+  await page.getByLabel('Runware API Key', { exact: true }).fill('guest-new-key');
+  await page.getByRole('button', { name: '連線，開始創作' }).click();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await expect(page.getByRole('status')).toContainText('服務已連線');
+  await expect(page.getByRole('button', { name: '服務狀態：服務已就緒' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '設定服務' })).toHaveCount(0);
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('service health checks run with hidden prices and distinguish invalid keys from unavailable service', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  let checks = 0;
+  let pricingChecks = 0;
+  let code = '';
+  let release: (() => void) | undefined;
+  let hold = true;
+  page.on('request', (request) => {
+    if (request.url().includes('/pricing')) pricingChecks++;
+  });
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON();
+    if (task.taskType !== 'accountManagement') return route.fallback();
+    checks++;
+    if (hold)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await route.fulfill({
+      status: code === '401' ? 401 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(code ? { errors: [{ code }] } : { data: [{ balance: 0 }] }),
+    });
+  });
+  await setup(page, '?costs=hidden');
+  const status = page.getByRole('button', { name: /^服務狀態/ });
+  await expect(status).toHaveAccessibleName('服務狀態：檢查中');
+  await expect.poll(() => checks).toBe(1);
+  hold = false;
+  release!();
+  await expect(status).toHaveAccessibleName('服務狀態：服務已就緒');
+  await expect(page.getByLabel('重新查詢餘額')).toHaveCount(0);
+  for (const failure of ['invalidApiKey', '401', 'forbidden', 'rateLimit']) {
+    code = failure;
+    await status.click();
+    await expect(status).toHaveAccessibleName(
+      `服務狀態：${['invalidApiKey', '401'].includes(failure) ? '金鑰不可用' : '暫時無法確認'}`,
+    );
+  }
+  code = '';
+  await page.context().setOffline(true);
+  await expect(status).toHaveAccessibleName('服務狀態：暫時無法確認');
+  const offlineChecks = checks;
+  await status.click();
+  expect(checks).toBe(offlineChecks);
+  await page.context().setOffline(false);
+  await expect(status).toHaveAccessibleName('服務狀態：服務已就緒');
+  await newWork(page);
+  await expect.poll(() => pricingChecks).toBeGreaterThan(0);
+  await expect(page.getByText(/預估費用/)).toHaveCount(0);
+});
+
+test('cancelling pending key validation preserves the saved key', async ({ page }) => {
+  await mockRunware(page);
+  await setup(page);
+  let release: (() => void) | undefined;
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON();
+    if (task.taskType !== 'authentication') return route.fallback();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+  await page.getByLabel('Runware API Key', { exact: true }).fill('cancelled-key');
+  await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await page.getByRole('button', { name: '取消，返回畫室' }).click();
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  const response = page.waitForResponse(
+    (r) => r.request().postData()?.includes('authentication') === true,
+  );
+  release!();
+  await response;
+  await page.reload();
+  expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
+    'test-key-never-real',
+  );
+});
+
+test('late balance replies cannot overwrite a replacement key and the same key can be verified again', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  let release: (() => void) | undefined;
+  let replacementChecks = 0;
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON();
+    if (task.taskType !== 'accountManagement') return route.fallback();
+    const oldKey = route.request().headers().authorization === 'Bearer test-key-never-real';
+    if (oldKey)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    else replacementChecks++;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [{ balance: oldKey ? 99 : 7 }] }),
+    });
+  });
+  await setup(page);
+  await expect.poll(() => Boolean(release)).toBe(true);
+  const replaceKey = async () => {
+    await page.getByLabel('設定', { exact: true }).click();
+    await openSettingsSection(page, '服務連線');
+    await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+    await page.getByLabel('Runware API Key', { exact: true }).fill('replacement-key');
+    await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+    await expect(page.getByRole('button', { name: '服務狀態：服務已就緒' })).toBeVisible();
+    await expect(page.getByLabel('重新查詢餘額')).toContainText('7.00');
+  };
+  await replaceKey();
+  const response = page.waitForResponse(
+    (r) => r.request().headers().authorization === 'Bearer test-key-never-real',
+  );
+  release!();
+  await (await response).finished();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(page.getByLabel('重新查詢餘額')).toContainText('7.00');
+  const checks = replacementChecks;
+  await replaceKey();
+  expect(replacementChecks).toBeGreaterThan(checks);
+});
+
+test('deleting one work frees its reference files and guest reset returns to setup', async ({
+  page,
+}, testInfo) => {
+  await mockRunware(page);
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.goto('/');
+  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await newWork(page);
+  await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
+    name: 'reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PNG, 'base64'),
+  });
+  await expect(page.getByAltText('參考照片 1')).toBeVisible();
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '暫存與備份');
+  await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('1 KB');
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await page.getByRole('button', { name: /刪除.*花園/ }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(0);
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '暫存與備份');
+  await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('0 KB');
+  await page.screenshot({ path: testInfo.outputPath('storage-settings.png'), fullPage: true });
+  await page.getByRole('button', { name: '清除資料並重設服務' }).click();
+  await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
 });
 
 test('replacing video models preserves compatibility checks', async ({ page }, testInfo) => {

@@ -13,6 +13,7 @@ import {
   removeWork,
   saveMedia,
   saveWork,
+  storageUsage,
 } from '../src/db';
 import { exportBackup, importBackup } from '../src/backup';
 
@@ -84,17 +85,29 @@ describe('Runware request capabilities', () => {
   it('migrates editable GPT selections while keeping legacy model requests and names', () => {
     const oldDraft = { ...newDraft(), models: ['banana', 'gpt'] as const };
     const migrated = currentDraft({ ...oldDraft, models: [...oldDraft.models] });
-    expect(migrated.models).toEqual(['banana', 'gptFlare']);
+    expect(migrated.models).toEqual(['banana', 'gptSunburst']);
     expect(oldDraft.models).toEqual(['banana', 'gpt']);
     expect(models.gpt.name).toBe('GPT Image 2');
     expect(modelsFor('image')).not.toContain('gpt');
+    expect(modelsFor('image')).not.toContain('gptFlare');
+    expect(
+      currentDraft({ ...newDraft(), models: ['gpt', 'gptFlare', 'gptSunburst'] }).models,
+    ).toEqual(['gptSunburst']);
+    const flareRequest = buildRequest(
+      'legacy-task',
+      'gptFlare',
+      { ...newDraft(), prompt: 'a flower', gptQuality: 'high' },
+      [],
+    );
+    expect(flareRequest.model).toBe('openai:gpt-image@2.5-flare');
+    expect(flareRequest.settings?.quality).toBe('high');
     const request = buildRequest(
       'task',
-      'gptFlare',
+      'gptSunburst',
       { ...migrated, prompt: 'a flower', gptQuality: 'high', gptBackground: 'transparent' },
       [],
     );
-    expect(request.model).toBe('openai:gpt-image@2.5-flare');
+    expect(request.model).toBe('openai:gpt-image@2.5-sunburst');
     expect(request.settings).toEqual({ quality: 'high', background: 'transparent' });
     expect(request.providerSettings).toBeUndefined();
   });
@@ -234,16 +247,21 @@ describe('local data and backups', () => {
       name: 'photo.png',
     });
     const blob = await exportBackup();
+    expect(await storageUsage()).toBe(new Blob(['actual-image-bytes']).size);
     expect(await blob.text()).not.toContain('private-fingerprint');
     await importBackup(new File([blob], 'backup.zip'));
     const works = await (await database).getAll('works');
     expect(works).toHaveLength(2);
+    expect(await storageUsage()).toBe(new Blob(['actual-image-bytes']).size * 2);
     const copied = works.find((w) => w.id !== work.id)!;
     expect(copied.draft.refs[0]).not.toBe(mediaId);
     expect(await (await getMedia(copied.draft.refs[0]))!.blob.text()).toBe('actual-image-bytes');
     await removeWork(work.id);
     expect(await (await database).count('works')).toBe(1);
     expect(await getMedia(copied.draft.refs[0])).toBeDefined();
+    expect(await storageUsage()).toBe(new Blob(['actual-image-bytes']).size);
+    await clearWorks();
+    expect(await storageUsage()).toBe(0);
   });
   it('retains an image referenced from another work', async () => {
     const { work, job, mediaId } = fixture();
@@ -257,6 +275,7 @@ describe('local data and backups', () => {
     await saveWork({ ...work, id: crypto.randomUUID() });
     await removeWork(work.id);
     expect(await getMedia(mediaId)).toBeDefined();
+    expect(await storageUsage()).toBe(5);
   });
   it('rejects malformed backups without modifying the library', async () => {
     await expect(importBackup(new File(['not a zip'], 'bad.zip'))).rejects.toThrow();
