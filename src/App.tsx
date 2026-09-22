@@ -85,7 +85,7 @@ function Toast({ notice }: { notice: ToastMessage }) {
     </div>
   );
 }
-type Screen = 'home' | 'work' | 'library';
+type Screen = 'home' | 'work' | 'library' | 'key';
 type WorkTab = 'edit' | 'results';
 interface NavigationState {
   studio: true;
@@ -380,7 +380,10 @@ function Welcome({
           </div>
         </div>
         <svg className="art-spark" viewBox="0 0 30 30" aria-hidden="true">
-          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
+          <path
+            d="M15 1C17 11 19 13 29 15C19 17 17 19 15 29C13 19 11 17 1 15C11 13 13 11 15 1Z"
+            fill="#849c7c"
+          />
         </svg>
         <svg className="art-spark spark-gold" viewBox="0 0 30 30" aria-hidden="true">
           <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#caa75a" />
@@ -388,17 +391,24 @@ function Welcome({
         <svg className="art-spark spark-small" viewBox="0 0 30 30" aria-hidden="true">
           <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
         </svg>
+        <svg className="art-spark spark-companion" viewBox="0 0 30 30" aria-hidden="true">
+          <path d="M15 2Q17 13 28 15Q17 17 15 28Q13 17 2 15Q13 13 15 2Z" fill="#caa75a" />
+        </svg>
+        <span className="art-speck speck-left" />
+        <span className="art-speck speck-right" />
       </div>
       <section className="card setup-card">
-        <div className="section-kicker">只需設定一次</div>
+        <div className="section-kicker">{returning ? '服務設定' : '只需設定一次'}</div>
         <h2>設定服務</h2>
         <KeyForm onSuccess={onSuccess} replacing={replacing} />
+        {!returning && (
+          <button type="button" className="secondary full guest-entry" onClick={onSkip}>
+            稍後設定 API Key
+          </button>
+        )}
         <a className="small-link" href="https://runware.ai" target="_blank" rel="noreferrer">
           前往 Runware 取得 API Key <ExternalLink size={13} />
         </a>
-        <button type="button" className="secondary full guest-entry" onClick={onSkip}>
-          {returning ? '取消，返回畫室' : '先逛逛畫室'}
-        </button>
       </section>
       <Privacy />
     </div>
@@ -509,7 +519,7 @@ function Workspace({
   const submit = async (target = draft) => {
     if (submitLock.current || active || uploading) return;
     if (!apiKey) {
-      notify('尚未設定 API Key，請先到畫室設定連線後再生成。');
+      notify('請先到右上角的設定，輸入 API Key 後再生成。');
       return;
     }
     if (!navigator.onLine) {
@@ -853,13 +863,6 @@ function Workspace({
                 </button>
               </div>
             </div>
-            <p className="quantity-total">
-              {draft.models.length} 位 AI，一共為你創作{' '}
-              <strong>
-                {total} {unit}
-                {mediaName}
-              </strong>
-            </p>
           </section>
           <div className="submit-bar">
             <div className="submit-summary">
@@ -1001,7 +1004,7 @@ function Workspace({
                                       className="secondary"
                                       onClick={async () => {
                                         if (!apiKey) {
-                                          notify('尚未設定 API Key，請先到畫室設定服務。');
+                                          notify('請先到右上角的設定，輸入 API Key 後再查詢。');
                                           return;
                                         }
                                         if (job.keyTag !== (await keyTag(apiKey))) {
@@ -1063,9 +1066,9 @@ export default function App() {
   }, []);
   const [apiKey, setApiKey] = useState(readKey);
   const [guestMode, setGuestMode] = useState(false);
-  const [rekeying, setRekeying] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
   const [screen, setScreen] = useState<Screen>('home');
+  const rekeying = screen === 'key';
   const [workTab, setWorkTab] = useState<WorkTab>('edit');
   const [works, setWorks] = useState<Work[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -1098,11 +1101,11 @@ export default function App() {
   const balanceSequence = useRef(0);
   const balanceRequest = useRef<{ key: string; sequence: number } | null>(null);
   const applyNavigation = useCallback((state: NavigationState) => {
-    setScreen(state.screen);
+    // Accept history entries created before key setup became a regular screen.
+    setScreen(state.overlay === 'key' ? 'key' : state.screen);
     setWorkId(state.workId ?? '');
     setWorkTab(state.workTab ?? 'edit');
     setSettings(state.overlay === 'settings');
-    setRekeying(state.overlay === 'key');
     setFullscreen(state.overlay === 'fullscreen');
     setImageJob(
       (state.overlay === 'viewer' || state.overlay === 'fullscreen') && state.jobId
@@ -1124,7 +1127,6 @@ export default function App() {
     if (state?.studio && state.overlay === overlay) history.back();
     else {
       setSettings(false);
-      setRekeying(false);
       setImageJob(null);
       setFullscreen(false);
     }
@@ -1314,10 +1316,12 @@ export default function App() {
     setConnectionState('checking');
     if (key === apiKey) void refreshBalance();
     notify(replacing ? '已更換 API Key。' : '服務已連線，開始創作吧。');
-    if (rekeying) closeOverlay('key');
+    const homeState: NavigationState = { studio: true, screen: 'home' };
+    history.replaceState(homeState, '');
+    applyNavigation(homeState);
   };
   const enterKeySetup = () => {
-    const state: NavigationState = { studio: true, screen, workId, workTab, overlay: 'key' };
+    const state: NavigationState = { studio: true, screen: 'key' };
     history.replaceState(state, '');
     applyNavigation(state);
   };
@@ -1368,7 +1372,7 @@ export default function App() {
             拾光畫室<small>little moments, made visible</small>
           </span>
         </button>
-        {enteredStudio && !rekeying && (
+        {enteredStudio && (
           <div className="header-tools">
             <button
               className={`connected ${connectionState}`}
@@ -1419,10 +1423,13 @@ export default function App() {
       )}
       {rekeying || !enteredStudio ? (
         <Welcome
-          key={rekeying ? 'rekey' : 'welcome'}
+          key={`${enteredStudio ? 'studio' : 'entry'}:${rekeying ? 'rekey' : 'welcome'}`}
           onSuccess={updateKey}
-          onSkip={() => (rekeying ? closeOverlay('key') : setGuestMode(true))}
-          returning={rekeying}
+          onSkip={() => {
+            setGuestMode(true);
+            navigate({ screen: 'home' });
+          }}
+          returning={enteredStudio}
           replacing={rekeying && Boolean(apiKey)}
         />
       ) : loading ? (
@@ -1489,7 +1496,7 @@ export default function App() {
                 <div>
                   <strong>我的作品</strong>
                   <small>
-                    {works.length} 份創作，{completed} 個保存在瀏覽器的成果
+                    {listedWorks.length} 份創作，{completed} 個保存在瀏覽器的成果
                   </small>
                 </div>
                 <ArrowRight size={19} />
@@ -1608,7 +1615,7 @@ export default function App() {
                   )}
                 </div>
               )}
-              <p className="hint">{STORAGE_NOTE}</p>
+              <p className="hint library-storage-note">{STORAGE_NOTE}</p>
             </>
           )}
         </>
@@ -1624,7 +1631,7 @@ export default function App() {
       {toast && !settings && !imageJob && <Toast notice={toast} />}
       {enteredStudio && settings && (
         <Modal
-          title="畫室設定"
+          title="設定"
           notice={toast}
           close={() => {
             if (!dataBusy) closeOverlay('settings');
@@ -1726,11 +1733,14 @@ export default function App() {
             </details>
             <details className="settings-section">
               <summary>
-                暫存與備份 <ChevronDown size={17} />
+                作品儲存 <ChevronDown size={17} />
               </summary>
               <div className="settings-section-body">
                 <section className="storage-summary" aria-label="作品暫存大小">
-                  <span>目前作品暫存</span>
+                  <span className="storage-symbol">
+                    <FolderHeart size={24} aria-hidden="true" />
+                  </span>
+                  <span className="storage-label">作品佔用空間</span>
                   <strong>
                     {storageBytes === undefined
                       ? '計算中…'
@@ -1738,11 +1748,50 @@ export default function App() {
                         ? '暫時無法讀取'
                         : formatBytes(storageBytes)}
                   </strong>
-                  <small>這裡包含瀏覽器中的參考照片、生成圖片與影片。</small>
-                  <small>刪除「我的作品」中的作品，就能釋出暫存空間。</small>
+                  <small>暫存在這個瀏覽器的參考照片、生成圖片與影片。</small>
                 </section>
+                <p className="hint">可以到「我的作品」刪除不需要的作品，釋出儲存空間。</p>
+                <button
+                  className="text-button danger"
+                  disabled={active || dataBusy}
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        '清除這台裝置的所有作品、照片與生成紀錄？Key 與顯示偏好會保留。此操作無法復原，請先匯出備份。',
+                      )
+                    )
+                      return;
+                    setDataBusy(true);
+                    try {
+                      await clearWorks();
+                      const homeState: NavigationState = {
+                        studio: true,
+                        screen: 'home',
+                        overlay: 'settings',
+                      };
+                      history.replaceState(homeState, '');
+                      applyNavigation(homeState);
+                      notify('已清除作品，服務設定已保留。');
+                    } catch {
+                      notify('清除失敗，請稍後再試。');
+                    } finally {
+                      setDataBusy(false);
+                    }
+                  }}
+                >
+                  刪除所有作品
+                </button>
+                <p className="hint">只刪除作品，保留 API Key 與偏好。刪除後無法復原，請先備份。</p>
+              </div>
+            </details>
+            <details className="settings-section">
+              <summary>
+                備份與還原 <ChevronDown size={17} />
+              </summary>
+              <div className="settings-section-body">
                 <p className="hint">
-                  備份包含圖片、影片、描述與作品設定，不含 API Key。請妥善保存；更換裝置後可以還原。
+                  將作品打包下載，換裝置時也能還原。備份包含照片、圖片、影片、描述與作品設定，不含
+                  API Key。
                 </p>
                 <div className="backup-actions">
                   <button
@@ -1792,75 +1841,46 @@ export default function App() {
                   </label>
                 </div>
                 <p className="hint">
-                  單次可還原 250 MB 以內的 ZIP。手機記憶體有限，重要作品也請另外下載。
+                  還原會保留原有作品。單次可匯入 250 MB 以內的 ZIP；重要成果也請另外下載保存。
                 </p>
-                <button
-                  className="text-button danger"
-                  disabled={active || dataBusy}
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        '清除這台裝置的所有作品、照片與生成紀錄？Key 與顯示偏好會保留。此操作無法復原，請先匯出備份。',
-                      )
-                    )
-                      return;
-                    setDataBusy(true);
-                    try {
-                      await clearWorks();
-                      const homeState: NavigationState = {
-                        studio: true,
-                        screen: 'home',
-                        overlay: 'settings',
-                      };
-                      history.replaceState(homeState, '');
-                      applyNavigation(homeState);
-                      notify('已清除作品，服務設定已保留。');
-                    } catch {
-                      notify('清除失敗，請稍後再試。');
-                    } finally {
-                      setDataBusy(false);
-                    }
-                  }}
-                >
-                  刪除所有作品
-                </button>
-                <div className="reset-service">
-                  <p className="hint">需要重新開始？下方會一併刪除作品與服務設定。</p>
-                  <button
-                    className="text-button danger"
-                    disabled={active || dataBusy}
-                    onClick={async () => {
-                      if (
-                        !confirm(
-                          '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
-                        )
-                      )
-                        return;
-                      setDataBusy(true);
-                      try {
-                        await clearWorks();
-                        saveKey('');
-                        resetPreferences();
-                        clearDraftDefaults();
-                        setApiKey('');
-                        setGuestMode(false);
-                        setPreferences(readPreferences());
-                        const homeState: NavigationState = { studio: true, screen: 'home' };
-                        history.replaceState(homeState, '');
-                        applyNavigation(homeState);
-                        notify('已重設這台裝置。');
-                      } catch {
-                        notify('重設未完成，請稍後再試。');
-                      } finally {
-                        setDataBusy(false);
-                      }
-                    }}
-                  >
-                    清除資料並重設服務
-                  </button>
-                </div>
               </div>
             </details>
+            <div className="reset-service">
+              <strong>重設這台裝置</strong>
+              <p className="hint">一併移除作品、API Key 與偏好。無法復原，請先備份。</p>
+              <button
+                className="text-button danger"
+                disabled={active || dataBusy}
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
+                    )
+                  )
+                    return;
+                  setDataBusy(true);
+                  try {
+                    await clearWorks();
+                    saveKey('');
+                    resetPreferences();
+                    clearDraftDefaults();
+                    setApiKey('');
+                    setGuestMode(false);
+                    setPreferences(readPreferences());
+                    const homeState: NavigationState = { studio: true, screen: 'home' };
+                    history.replaceState(homeState, '');
+                    applyNavigation(homeState);
+                    notify('已重設這台裝置。');
+                  } catch {
+                    notify('重設未完成，請稍後再試。');
+                  } finally {
+                    setDataBusy(false);
+                  }
+                }}
+              >
+                清除資料並重設服務
+              </button>
+            </div>
             <div className="studio-credit">
               Made by{' '}
               <a href={STUDIO} target="_blank" rel="noreferrer">

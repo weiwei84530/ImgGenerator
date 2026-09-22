@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import type { Work } from '../../src/types';
 
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
@@ -28,7 +29,8 @@ test('rapid clicks submit once and reset removes saved data and credentials', as
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '顯示偏好');
   await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
-  await openSettingsSection(page, '暫存與備份');
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBeNull();
@@ -109,6 +111,10 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await page.getByLabel('拾光畫室首頁').click();
   await expect(page.locator('.recent-work')).toHaveCount(0);
+  await expect(page.locator('.library-link')).toContainText('0 份創作，0 個');
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await page.getByLabel('拾光畫室首頁').click();
+  await expect(page.locator('.library-link')).toContainText('0 份創作，0 個');
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(0);
   await page.evaluate(async () => {
@@ -142,6 +148,9 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
   await page.getByRole('button', { name: '顯示更多' }).click();
   await expect(page.locator('.saved-work')).toHaveCount(23);
   await expect(page.getByRole('button', { name: '顯示更多' })).toHaveCount(0);
+  await page.getByLabel('拾光畫室首頁').click();
+  await expect(page.locator('.library-link')).toContainText('23 份創作，0 個');
+  await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
   await expect(page.getByRole('tab', { name: '編輯畫面' })).toHaveAttribute(
     'aria-selected',
@@ -157,6 +166,7 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
   await page.getByLabel('拾光畫室首頁').click();
   await expect(page.locator('.recent-thumbnail img').first()).toBeVisible();
+  await expect(page.locator('.library-link')).toContainText('24 份創作，0 個');
   await page.locator('.recent-work').first().click();
   await expect(page.getByRole('tab', { name: '編輯畫面' })).toHaveAttribute(
     'aria-selected',
@@ -402,7 +412,8 @@ test('video first-frame generation plays and downloads, hides costs, and survive
   expect((await downloadPromise).suggestedFilename()).toMatch(/\.mp4$/);
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '暫存與備份');
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
   const backup = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await (await backup).path();
@@ -464,7 +475,7 @@ test('first-use validation, saved key, replacement, and hidden money preference'
   await openSettingsSection(page, '服務連線');
   await page.getByRole('button', { name: '重新輸入 API Key' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
-  await page.getByRole('button', { name: '取消，返回畫室' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
     'test-key-never-real',
@@ -481,7 +492,8 @@ test('first-use validation, saved key, replacement, and hidden money preference'
   );
   await page.getByLabel('Runware API Key', { exact: true }).fill('replacement-test-key');
   await page.getByRole('button', { name: '驗證並更換 Key' }).click();
-  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  await expect(page.locator('.recent-work')).toHaveCount(1);
   await expect(page.getByRole('status')).toHaveText('已更換 API Key。');
   await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
   await page.goto('/?costs=hidden');
@@ -587,7 +599,8 @@ test('backup restore, deletion, key removal and offline images', async ({ page }
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '暫存與備份');
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await downloaded;
@@ -644,9 +657,9 @@ test('browser back follows screens and closes overlays', async ({ page }) => {
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
 
   await page.getByLabel('設定', { exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '畫室設定' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '設定' })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole('dialog', { name: '畫室設定' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '設定' })).toHaveCount(0);
 
   await newWork(page);
   await page.getByRole('button', { name: '開始生成圖片' }).click();
@@ -870,13 +883,13 @@ test('model selectors replace in place, join option rows, and keep removal indep
   expect(api.submitted).toHaveLength(0);
 });
 
-test('guest browsing is temporary, blocks generation, and can set up service in place', async ({
+test('guest browsing is temporary, blocks generation, and setup returns home', async ({
   page,
 }, testInfo) => {
   const api = await mockRunware(page);
   await page.goto('/');
   await page.screenshot({ path: testInfo.outputPath('welcome-sparkles.png'), fullPage: true });
-  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await page.getByRole('button', { name: '稍後設定 API Key' }).click();
   await expect(page.getByRole('button', { name: '服務狀態：未設定服務' })).toBeVisible();
   await expect(page.getByLabel('重新查詢餘額')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /我的作品/ })).toContainText(
@@ -884,16 +897,21 @@ test('guest browsing is temporary, blocks generation, and can set up service in 
   );
   await newWork(page);
   await page.getByRole('button', { name: '開始生成圖片' }).click();
-  await expect(page.getByRole('status')).toContainText('尚未設定 API Key');
+  await expect(page.getByRole('status')).toContainText('右上角的設定');
   expect(api.submitted).toHaveLength(0);
   await page.screenshot({ path: testInfo.outputPath('guest-toast.png'), fullPage: true });
   await page.getByLabel('設定', { exact: true }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await page.getByRole('button', { name: '稍後設定 API Key' }).click();
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  await page.locator('.recent-work').first().click();
+  await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '服務連線');
   await page.getByRole('button', { name: '輸入 API Key', exact: true }).click();
+  await expect(page.getByRole('button', { name: '服務狀態：未設定服務' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '稍後設定 API Key' })).toHaveCount(0);
   await page.goBack();
   await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
   await page.getByLabel('設定', { exact: true }).click();
@@ -901,7 +919,8 @@ test('guest browsing is temporary, blocks generation, and can set up service in 
   await page.getByRole('button', { name: '輸入 API Key', exact: true }).click();
   await page.getByLabel('Runware API Key', { exact: true }).fill('guest-new-key');
   await page.getByRole('button', { name: '連線，開始創作' }).click();
-  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  await expect(page.locator('.recent-work')).toHaveCount(1);
   await expect(page.getByRole('status')).toContainText('服務已連線');
   await expect(page.getByRole('button', { name: '服務狀態：服務已就緒' })).toBeVisible();
   await page.reload();
@@ -963,7 +982,9 @@ test('service health checks run with hidden prices and distinguish invalid keys 
   await expect(page.getByText(/預估費用/)).toHaveCount(0);
 });
 
-test('cancelling pending key validation preserves the saved key', async ({ page }) => {
+test('leaving key setup for home cancels pending validation and preserves the saved key', async ({
+  page,
+}) => {
   await mockRunware(page);
   await setup(page);
   let release: (() => void) | undefined;
@@ -981,7 +1002,7 @@ test('cancelling pending key validation preserves the saved key', async ({ page 
   await page.getByLabel('Runware API Key', { exact: true }).fill('cancelled-key');
   await page.getByRole('button', { name: '驗證並更換 Key' }).click();
   await expect.poll(() => Boolean(release)).toBe(true);
-  await page.getByRole('button', { name: '取消，返回畫室' }).click();
+  await page.getByLabel('拾光畫室首頁').click();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
   const response = page.waitForResponse(
     (r) => r.request().postData()?.includes('authentication') === true,
@@ -992,6 +1013,47 @@ test('cancelling pending key validation preserves the saved key', async ({ page 
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
     'test-key-never-real',
   );
+});
+
+test('removing the saved key from setup settings discards pending replacement validation', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  await setup(page);
+  page.on('dialog', (dialog) => void dialog.accept());
+  let release: (() => void) | undefined;
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON();
+    if (task.taskType !== 'authentication') return route.fallback();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+  await page.getByLabel('Runware API Key', { exact: true }).fill('discarded-replacement-key');
+  await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '移除這台裝置的 Key' }).click();
+  await expect(page.getByRole('button', { name: '稍後設定 API Key' })).toBeVisible();
+  const response = page.waitForResponse(
+    (r) => r.request().postData()?.includes('authentication') === true,
+  );
+  release!();
+  await (await response).finished();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBeNull();
+  await expect(page.locator('.header-tools')).toHaveCount(0);
+  await expect(page.getByLabel('Runware API Key', { exact: true })).toBeEmpty();
 });
 
 test('late balance replies cannot overwrite a replacement key and the same key can be verified again', async ({
@@ -1049,7 +1111,7 @@ test('deleting one work frees its reference files and guest reset returns to set
   await mockRunware(page);
   page.on('dialog', (dialog) => void dialog.accept());
   await page.goto('/');
-  await page.getByRole('button', { name: '先逛逛畫室' }).click();
+  await page.getByRole('button', { name: '稍後設定 API Key' }).click();
   await newWork(page);
   await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
     name: 'reference.png',
@@ -1058,7 +1120,8 @@ test('deleting one work frees its reference files and guest reset returns to set
   });
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '暫存與備份');
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
   await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('1 KB');
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('拾光畫室首頁').click();
@@ -1066,11 +1129,195 @@ test('deleting one work frees its reference files and guest reset returns to set
   await page.getByRole('button', { name: /刪除.*花園/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(0);
   await page.getByLabel('設定', { exact: true }).click();
-  await openSettingsSection(page, '暫存與備份');
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
   await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('0 KB');
   await page.screenshot({ path: testInfo.outputPath('storage-settings.png'), fullPage: true });
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
+});
+
+test('key setup keeps navigation, supports settings without losing input, and returns home on success', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  await page.goto('/');
+  await expect(page.locator('.header-tools')).toHaveCount(0);
+  const setupCard = page.locator('.setup-card');
+  const submit = (await setupCard.getByRole('button', { name: '連線，開始創作' }).boundingBox())!;
+  const skip = (await setupCard.getByRole('button', { name: '稍後設定 API Key' }).boundingBox())!;
+  const link = (await setupCard.getByRole('link', { name: /前往 Runware/ }).boundingBox())!;
+  expect(submit.y + submit.height).toBeLessThan(skip.y);
+  expect(skip.y + skip.height).toBeLessThan(link.y);
+  await setup(page);
+  await newWork(page);
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '服務連線');
+  await page.getByRole('button', { name: '重新輸入 API Key' }).click();
+  await expect(page.getByRole('button', { name: '服務狀態：服務已就緒' })).toBeVisible();
+  await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
+  await expect(page.getByRole('button', { name: /稍後設定|取消，返回/ })).toHaveCount(0);
+  await page.getByLabel('Runware API Key', { exact: true }).fill('unsaved-test-key');
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
+  await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
+  await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
+  await expect(page.getByLabel('Runware API Key', { exact: true })).toHaveValue('unsaved-test-key');
+  await expect(page.getByLabel('重新查詢餘額')).toHaveCount(0);
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
+  await page.getByRole('switch', { name: /顯示餘額與費用/ }).check();
+  await page.goBack();
+  await expect(page.getByLabel('Runware API Key', { exact: true })).toHaveValue('unsaved-test-key');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
+  await expect(page.getByLabel('Runware API Key', { exact: true })).toBeEmpty();
+  await expect(page.getByLabel('重新查詢餘額')).toContainText('12.34');
+  await page.screenshot({ path: testInfo.outputPath('key-setup-navigation.png'), fullPage: true });
+  await page.getByLabel('Runware API Key', { exact: true }).fill('replacement-key');
+  await page.getByRole('button', { name: '驗證並更換 Key' }).click();
+  await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
+  await page.locator('.recent-work').first().click();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('一隻貓咪在溫柔的花園中');
+  await expect(page.locator('.quantity-total')).toHaveCount(0);
+  await expect(page.locator('.count-equation')).toContainText('2 個 AI');
+  expect(api.submitted).toHaveLength(0);
+});
+
+test('library pagination preview uses isolated sample artwork and storage sections stay separate', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  await setup(page);
+  await page.getByRole('button', { name: /製作圖片/ }).click();
+  await page.evaluate(async () => {
+    // Synthetic canvas fixtures only; no user data or generation API is involved.
+    const titles = [
+      '晨光森林',
+      '窗邊的小花',
+      '山間散步',
+      '湖畔午後',
+      '樹下的風',
+      '花園來信',
+      '晴日小丘',
+      '雨後新芽',
+      '遠山薄霧',
+      '綠蔭小路',
+      '春日枝葉',
+      '一棵想像的樹',
+    ];
+    const samples = await Promise.all(
+      titles.map(async (title, index) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 240;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = ['#e8eddf', '#ebe2cf', '#dfe9e9'][index % 3];
+        context.fillRect(0, 0, 320, 240);
+        context.fillStyle = '#f8e6b0';
+        context.beginPath();
+        context.arc(235, 58, 28, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = ['#96ad91', '#99afb1', '#aab58f'][index % 3];
+        context.beginPath();
+        context.ellipse(150, 255, 245, 115, -0.15, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = '#65795c';
+        context.lineWidth = 6;
+        context.beginPath();
+        context.moveTo(118, 201);
+        context.lineTo(118, 88);
+        context.stroke();
+        context.fillStyle = ['#6b8c73', '#8b9e79', '#668b85'][index % 3];
+        for (const [x, y, radius] of [
+          [100, 103, 35],
+          [135, 98, 39],
+          [118, 62, 31],
+        ]) {
+          context.beginPath();
+          context.arc(x, y, radius, 0, Math.PI * 2);
+          context.fill();
+        }
+        const blob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((value) => resolve(value!), 'image/png'),
+        );
+        return { title, bytes: await blob.arrayBuffer() };
+      }),
+    );
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const request = indexedDB.open('img-generator');
+      request.onsuccess = () => resolve(request.result);
+    });
+    const tx = db.transaction(['works', 'jobs', 'media'], 'readwrite');
+    const store = tx.objectStore('works');
+    const empty = await new Promise<Work>((resolve) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result[0]);
+    });
+    samples.forEach((sample, index) => {
+      const id = `preview-work-${index}`;
+      const mediaId = `preview-media-${index}`;
+      const time = new Date('2026-09-22T02:00:00Z').getTime() + index * 60000;
+      const draft = { ...empty.draft, prompt: sample.title };
+      store.put({ ...empty, id, title: sample.title, createdAt: time, updatedAt: time, draft });
+      tx.objectStore('media').put({
+        id: mediaId,
+        bytes: sample.bytes,
+        type: 'image/png',
+        name: `${id}.png`,
+      });
+      tx.objectStore('jobs').put({
+        id: `preview-job-${index}`,
+        workId: id,
+        batchId: id,
+        model: 'banana',
+        status: 'succeeded',
+        createdAt: time,
+        draft,
+        keyTag: 'synthetic',
+        mediaId,
+      });
+    });
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+    });
+    db.close();
+    window.dispatchEvent(new Event('studio-change'));
+  });
+  await page.getByLabel('拾光畫室首頁').click();
+  await expect(page.locator('.library-link')).toContainText('12 份創作，12 個');
+  await page.getByRole('button', { name: /我的作品/ }).click();
+  await expect(page.locator('.saved-work')).toHaveCount(10);
+  await expect(page.locator('.saved-work img')).toHaveCount(10);
+  const more = page.getByRole('button', { name: '顯示更多' });
+  await more.scrollIntoViewIfNeeded();
+  await expect(page.locator('.library-storage-note')).toHaveCSS('text-align', 'center');
+  await expect(page.locator('.toast')).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('library-load-more.png') });
+  await page.screenshot({ path: testInfo.outputPath('library-first-ten.png'), fullPage: true });
+  await more.click();
+  await expect(page.locator('.saved-work')).toHaveCount(12);
+  await expect(more).toHaveCount(0);
+  await page.locator('.library-storage-note').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('library-all-twelve.png') });
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '作品儲存');
+  await openSettingsSection(page, '備份與還原');
+  const storage = page
+    .locator('details')
+    .filter({ has: page.locator('summary', { hasText: '作品儲存' }) });
+  const backup = page
+    .locator('details')
+    .filter({ has: page.locator('summary', { hasText: '備份與還原' }) });
+  await expect(storage.getByRole('button', { name: '刪除所有作品' })).toBeVisible();
+  await expect(storage.getByRole('button', { name: '匯出備份' })).toHaveCount(0);
+  await expect(backup.getByRole('button', { name: '匯出備份' })).toBeVisible();
+  await expect(backup.getByRole('button', { name: '刪除所有作品' })).toHaveCount(0);
+  await expect(page.locator('details .reset-service')).toHaveCount(0);
+  await expect(page.getByLabel('作品暫存大小').locator('strong')).toContainText('KB');
+  await page.getByLabel('作品暫存大小').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('storage-and-backup.png') });
+  expect(api.submitted).toHaveLength(0);
 });
 
 test('replacing video models preserves compatibility checks', async ({ page }, testInfo) => {
