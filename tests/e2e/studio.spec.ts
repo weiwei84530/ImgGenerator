@@ -348,10 +348,16 @@ async function mockInspiration(page: Page, hold = false) {
       }),
     });
   });
-  return { tasks, release: () => release?.() };
+  return {
+    tasks,
+    release: () => {
+      hold = false;
+      release?.();
+    },
+  };
 }
 
-test('inspiration applies and undoes suggestions, records only adopted batches and hides costs', async ({
+test('inspiration replaces the editor, returns without loss, adopts once and hides costs', async ({
   page,
 }, testInfo) => {
   const api = await mockRunware(page);
@@ -369,15 +375,18 @@ test('inspiration applies and undoes suggestions, records only adopted batches a
   await expect.poll(() => inspiration.tasks.length).toBe(1);
   inspiration.release();
   await expect(page.locator('.inspiration-idea')).toHaveCount(4);
-  await expect(prompt).toHaveValue(original);
+  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.inspiration-results button')).toHaveCount(5);
+  await expect(page.locator('.inspiration-cost')).toHaveText('本次靈感 US$ 0.001230');
   expect(api.submitted).toHaveLength(0);
-  await page.locator('.inspiration-idea').first().click();
-  await expect(prompt).toHaveValue(inspirationIdeas[0].prompt);
-  await page.getByRole('button', { name: '復原原本描述' }).click();
+  await page.getByRole('button', { name: '回到原本的編輯' }).click();
   await expect(prompt).toHaveValue(original);
-  await page.locator('.inspiration-details summary').click();
-  await expect(page.locator('.prompt-history-heading')).toContainText('0 筆');
-  await page.locator('.inspiration-details summary').click();
+  await expect(prompt).toBeFocused();
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  expect(JSON.parse((inspiration.tasks[1] as any).messages[0].content).historyNewestFirst).toEqual(
+    [],
+  );
   await page
     .locator('.inspiration')
     .screenshot({ path: testInfo.outputPath('inspiration-cards.png') });
@@ -390,6 +399,9 @@ test('inspiration applies and undoes suggestions, records only adopted batches a
     .click();
   await expect(page.locator('.inspiration-cost')).toHaveCount(0);
   await page.locator('.inspiration-idea').nth(1).click();
+  await expect(prompt).toHaveValue(inspirationIdeas[1].prompt);
+  await expect(prompt).toBeFocused();
+  await expect(page.locator('.inspiration-results')).toHaveCount(0);
   const adopted = `${inspirationIdeas[1].prompt} 不要文字。`;
   await prompt.fill(adopted);
   await expect(page.locator('.inspiration-idea')).toHaveCount(0);
@@ -397,13 +409,12 @@ test('inspiration applies and undoes suggestions, records only adopted batches a
   await page.getByRole('button', { name: '開始生成圖片' }).click();
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   await page.getByRole('tab', { name: '編輯畫面' }).click();
-  await page.locator('.inspiration-details summary').click();
-  await expect(page.locator('.prompt-history-heading')).toContainText('1 筆');
-  await expect(page.locator('.prompt-history li')).toHaveCount(1);
-  await expect(page.locator('.prompt-history li')).toContainText(adopted);
   await page.reload();
-  await page.locator('.inspiration-details summary').click();
-  await expect(page.locator('.prompt-history li')).toHaveCount(1);
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  expect(JSON.parse((inspiration.tasks[2] as any).messages[0].content).historyNewestFirst).toEqual([
+    { prompt: adopted, uses: 1 },
+  ]);
 });
 
 test('inspiration discards late results after edits and never retries automatically', async ({
@@ -428,7 +439,7 @@ test('inspiration discards late results after edits and never retries automatica
   expect(inspiration.tasks).toHaveLength(1);
 });
 
-test('inspiration sees video photos and settings, refreshes once and preserves cards on errors', async ({
+test('inspiration sees video photos and settings, returns to blank and preserves text on errors', async ({
   page,
 }) => {
   const api = await mockRunware(page);
@@ -453,9 +464,11 @@ test('inspiration sees video photos and settings, refreshes once and preserves c
     audio: false,
     historyNewestFirst: [],
   });
-  await page.getByRole('button', { name: '換一批', exact: true }).click();
+  await page.getByRole('button', { name: '回到原本的編輯' }).click();
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('');
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
   await expect.poll(() => inspiration.tasks.length).toBe(2);
-  await expect(page.getByRole('button', { name: '換一批', exact: true })).toBeEnabled();
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
   expect(JSON.parse((inspiration.tasks[1] as any).messages[0].content).previousSuggestions).toEqual(
     inspirationIdeas.map((idea) => idea.prompt),
   );
@@ -468,9 +481,10 @@ test('inspiration sees video photos and settings, refreshes once and preserves c
       body: JSON.stringify({ errors: [{ code: 'insufficientCredits' }] }),
     });
   });
-  await page.getByRole('button', { name: '換一批', exact: true }).click();
+  await page.getByRole('button', { name: '回到原本的編輯' }).click();
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
   await expect(page.locator('.inspiration .error')).toContainText('帳戶狀態');
-  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  await expect(page.locator('.inspiration-idea')).toHaveCount(0);
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
 });
 
