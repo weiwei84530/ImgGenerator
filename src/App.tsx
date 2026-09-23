@@ -28,6 +28,7 @@ import {
 import { clearWorks, getMedia, removeWork, saveWork, snapshot, storageUsage } from './db';
 import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
+import { WelcomeIllustration } from './WelcomeIllustration';
 import { ModelPicker, ProviderLogo } from './ModelPicker';
 import { queueGeneration, resumeJobs, runJob } from './engine';
 import { currentDraft, dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
@@ -358,45 +359,13 @@ function Welcome({
   return (
     <div className="welcome">
       <div className="eyebrow">
-        <span /> A LITTLE SPACE FOR IDEAS
+        <span /> A LITTLE SPACE TO CREATE
       </div>
       <h1>
-        一個想法，<em>多位 AI 一起畫。</em>
+        一個想法，<em>畫出不同可能。</em>
       </h1>
-      <p className="intro">寫一句話、選幾位 AI 畫家，一次看見不同的創意。</p>
-      <div className="paper-art" aria-hidden="true">
-        <div className="art-card art-back">
-          <div className="art-sun" />
-          <div className="art-hill" />
-        </div>
-        <div className="art-card art-front">
-          <div className="art-flower">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <b />
-          </div>
-        </div>
-        <svg className="art-spark" viewBox="0 0 30 30" aria-hidden="true">
-          <path
-            d="M15 1C17 11 19 13 29 15C19 17 17 19 15 29C13 19 11 17 1 15C11 13 13 11 15 1Z"
-            fill="#849c7c"
-          />
-        </svg>
-        <svg className="art-spark spark-gold" viewBox="0 0 30 30" aria-hidden="true">
-          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#caa75a" />
-        </svg>
-        <svg className="art-spark spark-small" viewBox="0 0 30 30" aria-hidden="true">
-          <path d="m15 2 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="#849c7c" />
-        </svg>
-        <svg className="art-spark spark-companion" viewBox="0 0 30 30" aria-hidden="true">
-          <path d="M15 2Q17 13 28 15Q17 17 15 28Q13 17 2 15Q13 13 15 2Z" fill="#caa75a" />
-        </svg>
-        <span className="art-speck speck-left" />
-        <span className="art-speck speck-right" />
-      </div>
+      <p className="intro">寫下你想看的畫面，讓不同 AI 各畫一張。</p>
+      <WelcomeIllustration />
       <section className="card setup-card">
         <div className="section-kicker">{returning ? '服務設定' : '只需設定一次'}</div>
         <h2>設定服務</h2>
@@ -1363,13 +1332,17 @@ export default function App() {
         <button
           className="brand"
           onClick={() => navigate({ screen: 'home' })}
-          aria-label="拾光畫室首頁"
+          aria-label="種子畫廊首頁"
         >
-          <span className="brand-symbol">
-            <Sparkles size={21} />
-          </span>
+          <img
+            className="brand-symbol"
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+            width={44}
+            height={44}
+          />
           <span>
-            拾光畫室<small>little moments, made visible</small>
+            種子畫廊<small>one seed, many possibilities</small>
           </span>
         </button>
         {enteredStudio && (

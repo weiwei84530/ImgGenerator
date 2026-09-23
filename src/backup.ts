@@ -97,7 +97,7 @@ export async function importBackup(file: File) {
   });
   if (tooLarge || !extracted['manifest.json']) throw new Error('備份過大或缺少作品清單。');
   const parsed = manifestSchema.safeParse(JSON.parse(strFromU8(extracted['manifest.json'])));
-  if (!parsed.success) throw new Error('這不是支援的拾光畫室備份格式。');
+  if (!parsed.success) throw new Error('這不是支援的種子畫廊備份格式。');
   const data = parsed.data;
   const remap = new Map<string, string>();
   const mapId = (old: string) => {

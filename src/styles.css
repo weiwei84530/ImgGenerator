@@ -209,13 +209,10 @@ details[open] > summary > svg:last-child {
   margin-top: 3px;
 }
 .brand-symbol {
-  display: grid;
-  place-items: center;
-  background: var(--green);
-  color: #f4e9c9;
-  width: 42px;
+  display: block;
+  flex-shrink: 0;
+  width: 44px;
   height: 44px;
-  border-radius: 14px 14px 14px 4px;
 }
 .icon-button {
   display: inline-flex;
@@ -352,167 +349,15 @@ details[open] > summary > svg:last-child {
   color: #808577;
 }
 .paper-art {
-  height: 222px;
-  position: relative;
-  margin: 8px auto 2px;
-  width: 320px;
+  display: block;
+  width: 400px;
   max-width: 100%;
-}
-.art-card {
-  position: absolute;
-  width: 145px;
-  height: 170px;
-  border: 7px solid #fffdf7;
-  border-bottom-width: 25px;
-  box-shadow: 0 7px 22px #2d412618;
-  overflow: hidden;
-  top: 22px;
-  border-radius: 3px;
-}
-.art-back {
-  left: 37px;
-  transform: rotate(-13deg);
-  background: #c1d1c3;
-}
-.art-sun {
-  height: 55px;
-  width: 55px;
-  border-radius: 50%;
-  background: #f8e9b4;
-  position: absolute;
-  top: 12px;
-  left: 45px;
-}
-.art-hill {
-  position: absolute;
-  bottom: -30px;
-  left: -50px;
-  width: 210px;
-  height: 110px;
-  border-radius: 50%;
-  background: #648976;
-  transform: rotate(-20deg);
-}
-.art-hill:after {
-  content: '';
-  position: absolute;
-  top: 38px;
-  left: 10px;
-  width: 230px;
-  height: 80px;
-  border-radius: 50%;
-  background: #9dae82;
-}
-.art-front {
-  left: 148px;
-  top: 28px;
-  background: #eadfc9;
-  transform: rotate(10deg);
+  height: auto;
+  margin: 8px auto 2px;
   overflow: visible;
 }
-.art-front > span {
-  position: absolute;
-  font-size: 8px;
-  bottom: -21px;
-  left: 11px;
-  font-family: Georgia, serif;
-  color: #85866f;
-  font-style: italic;
-}
-.art-flower {
-  position: absolute;
-  top: 23px;
-  left: 26px;
-  width: 80px;
-  height: 90px;
-}
-.art-flower:after {
-  content: '';
-  position: absolute;
-  top: 39px;
-  left: 37px;
-  width: 3px;
-  height: 79px;
-  background: #78976a;
-  transform: rotate(-8deg);
-}
-.art-flower i {
-  position: absolute;
-  background: #fff9e9;
-  width: 38px;
-  height: 52px;
-  border-radius: 50%;
-  left: 20px;
-  top: 0;
-  transform-origin: 50% 75%;
-  z-index: 1;
-}
-.art-flower i:nth-child(2) {
-  transform: rotate(72deg);
-}
-.art-flower i:nth-child(3) {
-  transform: rotate(144deg);
-}
-.art-flower i:nth-child(4) {
-  transform: rotate(216deg);
-}
-.art-flower i:nth-child(5) {
-  transform: rotate(288deg);
-}
-.art-flower b {
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  background: #cdaa52;
-  border-radius: 50%;
-  top: 25px;
-  left: 26px;
-  z-index: 2;
-}
-.art-spark {
-  position: absolute;
-  top: 0;
-  left: 283px;
-  width: 29px;
-  height: 34px;
-  transform: rotate(8deg);
-}
-.art-spark.spark-gold {
-  width: 18px;
-  height: 22px;
-  top: 22px;
-  left: 15px;
-  transform: rotate(-9deg);
-}
-.art-spark.spark-small {
-  width: 13px;
-  height: 17px;
-  top: 183px;
-  left: 301px;
-  opacity: 0.8;
-}
-.art-spark.spark-companion {
-  width: 11px;
-  height: 14px;
-  top: 32px;
-  left: 310px;
-  transform: rotate(-12deg);
-}
-.art-speck {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #caa75a;
-  opacity: 0.6;
-}
-.speck-left {
-  top: 54px;
-  left: 17px;
-}
-.speck-right {
-  top: 174px;
-  left: 316px;
+.welcome-photo-paper {
+  filter: drop-shadow(0 7px 9px #2d412618);
 }
 .setup-card .section-kicker {
   margin-bottom: 12px;
@@ -1830,7 +1675,6 @@ footer a {
   }
   .paper-art {
     margin-top: 15px;
-    height: 235px;
   }
   .card {
     padding: 26px;
@@ -1856,12 +1700,6 @@ footer a {
   }
   .welcome h1 {
     font-size: 28px;
-  }
-  .paper-art {
-    transform: scale(0.9);
-    transform-origin: left center;
-    width: 290px;
-    height: 205px;
   }
   .create-card {
     grid-template-columns: minmax(0, 1fr) 80px;
@@ -2052,14 +1890,6 @@ footer a {
 .brand {
   gap: 11px;
   font-size: 19px;
-}
-.brand-symbol {
-  width: 42px;
-  height: 44px;
-  border-radius: 14px 14px 14px 4px;
-}
-.brand-symbol svg {
-  width: 21px;
 }
 .header-tools {
   display: flex;

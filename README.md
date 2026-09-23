@@ -1,10 +1,10 @@
-# 拾光畫室 · ImgGenerator
+# 種子畫廊 · ImgGenerator
 
 手機優先的 AI 圖片與影片工具。使用自己的 Runware API Key，讓多個模型根據相同描述與參考照片，分別生成作品。
 
 ## 使用
 
-1. 開啟 [拾光畫室](https://weiwei84530.github.io/ImgGenerator/)，輸入 Runware API Key。
+1. 開啟 [種子畫廊](https://weiwei84530.github.io/ImgGenerator/)，輸入 Runware API Key。
 2. 選擇「製作圖片」或「製作影片」，描述畫面，也可以加入自己的照片。
 3. 選擇模型、比例、解析度與數量；影片另可選擇秒數與是否生成聲音，再開始生成。
 4. 在「本次作品」放大、播放、下載。圖片可以帶入新的圖片作品，或選擇「用這張圖製作影片」。

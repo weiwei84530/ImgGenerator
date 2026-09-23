@@ -109,11 +109,11 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
   await mockRunware(page);
   await setup(page);
   await page.getByRole('button', { name: /製作圖片/ }).click();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.locator('.recent-work')).toHaveCount(0);
   await expect(page.locator('.library-link')).toContainText('0 份創作，0 個');
   await page.getByRole('button', { name: /製作影片/ }).click();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.locator('.library-link')).toContainText('0 份創作，0 個');
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(0);
@@ -148,7 +148,7 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
   await page.getByRole('button', { name: '顯示更多' }).click();
   await expect(page.locator('.saved-work')).toHaveCount(23);
   await expect(page.getByRole('button', { name: '顯示更多' })).toHaveCount(0);
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.locator('.library-link')).toContainText('23 份創作，0 個');
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
@@ -156,7 +156,7 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
     'aria-selected',
     'true',
   );
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await page.getByLabel('編輯照片', { exact: true }).setInputFiles({
     name: 'photo.png',
@@ -164,7 +164,7 @@ test('v2 work list hides empty drafts without deletion and loads ten at a time',
     buffer: Buffer.from(PNG, 'base64'),
   });
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.locator('.recent-thumbnail img').first()).toBeVisible();
   await expect(page.locator('.library-link')).toContainText('24 份創作，0 個');
   await page.locator('.recent-work').first().click();
@@ -326,20 +326,20 @@ test('category defaults remember parameters while new works keep prompts and ref
   await page.getByLabel('移除 GPT Image 2.5 Sunburst').click();
   await page.getByLabel('增加張數').click();
   await page.getByRole('button', { name: '方形', exact: false }).click();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /製作影片/ }).click();
   await expect(page.getByLabel('移除 Kling 3.0 Standard')).toBeVisible();
   await expect(page.getByLabel('生成聲音', { exact: true })).not.toBeChecked();
   await page.getByLabel('生成聲音', { exact: true }).check();
   await page.getByLabel('影片長度').selectOption('8');
   await page.reload();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /製作圖片/ }).click();
   await expect(page.getByLabel('移除 Nano Banana 2')).toBeVisible();
   await expect(page.getByLabel('移除 GPT Image 2.5 Sunburst')).toHaveCount(0);
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   await expect(page.locator('.stepper')).toContainText('2 張');
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /製作影片/ }).click();
   await expect(page.getByLabel('影片長度')).toHaveValue('8');
   await expect(page.getByLabel('生成聲音', { exact: true })).toBeChecked();
@@ -441,7 +441,7 @@ test('video partial failures retry only the failed model and reload only polls t
   await page.getByRole('button', { name: '開始生成影片' }).click();
   await expect(page.getByRole('button', { name: '查詢原任務' })).toBeVisible();
   await page.reload();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
   await page.getByRole('tab', { name: /本次作品/ }).click();
@@ -475,7 +475,7 @@ test('first-use validation, saved key, replacement, and hidden money preference'
   await openSettingsSection(page, '服務連線');
   await page.getByRole('button', { name: '重新輸入 API Key' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBe(
     'test-key-never-real',
@@ -533,7 +533,7 @@ test('two models, two photos each, original references, download and new work', 
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
   await expect(page.getByLabel('描述你的想法')).toHaveValue('');
   expect(api.submitted).toHaveLength(4);
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(2);
 });
@@ -564,7 +564,7 @@ test('interrupted submission reloads by polling the same task without another ch
   await expect.poll(() => api.polled.length).toBeGreaterThan(0);
   expect(api.submitted).toHaveLength(1);
   expect(api.polled[0].taskUUID).toBe(api.submitted[0].taskUUID);
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.locator('.work-open').first().click();
   await page.getByRole('tab', { name: /本次作品/ }).click();
@@ -674,7 +674,7 @@ test('existing works open results and local collections stay focused', async ({ 
   await setup(page);
   await newWork(page);
   await page.getByRole('button', { name: '開始生成圖片' }).click();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.getByRole('button', { name: '開始新作品' })).toHaveCount(0);
   await page.locator('.work-open').first().click();
@@ -1002,7 +1002,7 @@ test('leaving key setup for home cancels pending validation and preserves the sa
   await page.getByLabel('Runware API Key', { exact: true }).fill('cancelled-key');
   await page.getByRole('button', { name: '驗證並更換 Key' }).click();
   await expect.poll(() => Boolean(release)).toBe(true);
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.getByRole('button', { name: /製作圖片/ })).toBeVisible();
   const response = page.waitForResponse(
     (r) => r.request().postData()?.includes('authentication') === true,
@@ -1124,7 +1124,7 @@ test('deleting one work frees its reference files and guest reset returns to set
   await openSettingsSection(page, '備份與還原');
   await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('1 KB');
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await page.getByRole('button', { name: /我的作品/ }).click();
   await page.getByRole('button', { name: /刪除.*花園/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(0);
@@ -1284,7 +1284,7 @@ test('library pagination preview uses isolated sample artwork and storage sectio
     db.close();
     window.dispatchEvent(new Event('studio-change'));
   });
-  await page.getByLabel('拾光畫室首頁').click();
+  await page.getByLabel('種子畫廊首頁').click();
   await expect(page.locator('.library-link')).toContainText('12 份創作，12 個');
   await page.getByRole('button', { name: /我的作品/ }).click();
   await expect(page.locator('.saved-work')).toHaveCount(10);
