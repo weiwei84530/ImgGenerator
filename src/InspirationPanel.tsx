@@ -29,13 +29,12 @@ export function InspirationPanel({
   disabled: boolean;
   onApply: (prompt: string) => void;
   onSettled: () => void;
-  children: ReactNode;
+  children: (inspirationButton: ReactNode) => ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<{ source: string; ideas: InspirationIdea[] }>();
   const [lastCost, setLastCost] = useState<number>();
-  const [completed, setCompleted] = useState(false);
   const previousIdeas = useRef<InspirationIdea[]>([]);
   const container = useRef<HTMLDivElement>(null);
   const focusEditor = useRef(false);
@@ -76,7 +75,6 @@ export function InspirationPanel({
     setBusy(true);
     setError('');
     setLastCost(undefined);
-    setCompleted(false);
     try {
       const result = await fetchInspiration(
         apiKey,
@@ -86,7 +84,6 @@ export function InspirationPanel({
       );
       if (!live.current || latest.current.apiKey !== apiKey) return;
       setLastCost(result.cost);
-      setCompleted(true);
       previousIdeas.current = result.ideas;
       if (latest.current.context !== context) {
         setError('描述、照片或設定已改變，這批靈感未套用。請依目前內容重新取得靈感。');
@@ -121,17 +118,6 @@ export function InspirationPanel({
             <span className="step">01</span>描述你的想法
           </label>
         )}
-        {!current && (
-          <button
-            type="button"
-            className="inspiration-trigger"
-            disabled={busy || disabled}
-            onClick={() => void generate()}
-          >
-            {busy ? <LoaderCircle size={15} className="spin" /> : <Lightbulb size={15} />}
-            <span role={busy ? 'status' : undefined}>{busy ? '正在想點子…' : '給我一點靈感'}</span>
-          </button>
-        )}
       </div>
       {current ? (
         <div className="inspiration-results" aria-label="靈感選項">
@@ -157,16 +143,28 @@ export function InspirationPanel({
           </div>
         </div>
       ) : (
-        children
+        children(
+          <button
+            type="button"
+            className="inspiration-trigger"
+            disabled={busy || disabled}
+            onClick={() => void generate()}
+          >
+            {busy ? <LoaderCircle size={15} className="spin" /> : <Lightbulb size={15} />}
+            <span role={busy ? 'status' : undefined}>{busy ? '正在想點子…' : '給我一點靈感'}</span>
+          </button>,
+        )
       )}
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      {showMoney && completed && (
+      {showMoney && current && (
         <p className="inspiration-cost">
-          {lastCost === undefined ? '本次靈感費用未回報' : `本次靈感 US$ ${lastCost.toFixed(6)}`}
+          {lastCost === undefined
+            ? '本次靈感費用未回報'
+            : `本次靈感花費 US$ ${lastCost.toFixed(6)}`}
         </p>
       )}
     </div>

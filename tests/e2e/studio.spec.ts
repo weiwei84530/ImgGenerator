@@ -377,10 +377,11 @@ test('inspiration replaces the editor, returns without loss, adopts once and hid
   await expect(page.locator('.inspiration-idea')).toHaveCount(4);
   await expect(prompt).toHaveCount(0);
   await expect(page.locator('.inspiration-results button')).toHaveCount(5);
-  await expect(page.locator('.inspiration-cost')).toHaveText('本次靈感 US$ 0.001230');
+  await expect(page.locator('.inspiration-cost')).toHaveText('本次靈感花費 US$ 0.001230');
   expect(api.submitted).toHaveLength(0);
   await page.getByRole('button', { name: '回到原本的編輯' }).click();
   await expect(prompt).toHaveValue(original);
+  await expect(page.locator('.inspiration-cost')).toHaveCount(0);
   await expect(prompt).toBeFocused();
   await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
   await expect(page.locator('.inspiration-idea')).toHaveCount(4);

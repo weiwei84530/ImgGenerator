@@ -554,38 +554,45 @@ function Workspace({
               onApply={(prompt) => update({ prompt })}
               onSettled={refreshBalance}
             >
-              <textarea
-                id="prompt"
-                value={draft.prompt}
-                maxLength={32000}
-                placeholder={
-                  video
-                    ? draft.refs.length
-                      ? '例如：讓照片中的花朵隨風輕輕搖動，鏡頭緩慢靠近。'
-                      : '例如：午後花園裡，一隻橘貓伸懶腰，陽光灑落，鏡頭緩慢靠近。'
-                    : draft.refs.length
-                      ? '想怎麼修改這張照片？例如：保留人物，把背景換成溫暖的花園。'
-                      : '例如：一隻橘貓坐在窗邊，午後陽光灑在牠身上，溫柔的水彩風格…'
-                }
-                onChange={(e) => update({ prompt: e.target.value })}
-                rows={5}
-              />
-              <div className="prompt-footer">
-                <Leaf size={15} />
-                <span>
-                  {video
-                    ? draft.refs.length
-                      ? '照片會作為影片的起始畫面'
-                      : '描述動作、鏡頭與想要的氛圍'
-                    : draft.refs.length
-                      ? '這次會以你上傳的照片進行修改'
-                      : '像跟朋友說話一樣，自然描述就好'}
-                </span>
-              </div>
-              {draft.prompt.length > promptLimit(draft) && (
-                <p className="error" role="alert">
-                  目前模型最多接受 {promptLimit(draft).toLocaleString()} 字，請縮短描述。
-                </p>
+              {(inspirationButton) => (
+                <>
+                  <textarea
+                    id="prompt"
+                    value={draft.prompt}
+                    maxLength={32000}
+                    placeholder={
+                      video
+                        ? draft.refs.length
+                          ? '例如：讓照片中的花朵隨風輕輕搖動，鏡頭緩慢靠近。'
+                          : '例如：午後花園裡，一隻橘貓伸懶腰，陽光灑落，鏡頭緩慢靠近。'
+                        : draft.refs.length
+                          ? '想怎麼修改這張照片？例如：保留人物，把背景換成溫暖的花園。'
+                          : '例如：一隻橘貓坐在窗邊，午後陽光灑在牠身上，溫柔的水彩風格…'
+                    }
+                    onChange={(e) => update({ prompt: e.target.value })}
+                    rows={5}
+                  />
+                  <div className="prompt-footer">
+                    <span className="prompt-hint">
+                      <Leaf size={15} />
+                      <span>
+                        {video
+                          ? draft.refs.length
+                            ? '照片會作為影片的起始畫面'
+                            : '描述動作、鏡頭與想要的氛圍'
+                          : draft.refs.length
+                            ? '這次會以你上傳的照片進行修改'
+                            : '像跟朋友說話一樣，自然描述就好'}
+                      </span>
+                    </span>
+                    {inspirationButton}
+                  </div>
+                  {draft.prompt.length > promptLimit(draft) && (
+                    <p className="error" role="alert">
+                      目前模型最多接受 {promptLimit(draft).toLocaleString()} 字，請縮短描述。
+                    </p>
+                  )}
+                </>
               )}
             </InspirationPanel>
             <div className="refs">
