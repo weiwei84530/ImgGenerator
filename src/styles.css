@@ -827,12 +827,13 @@ details[open] > summary > svg:last-child {
   justify-content: center;
   flex-shrink: 0;
   gap: 5px;
-  min-height: 44px;
-  padding: 5px 9px;
-  border-radius: 16px;
+  min-height: 28px;
+  padding: 4px 14px;
+  border-radius: 999px;
   background: #eaf0e4;
   color: var(--green-dark);
   font-size: 12px;
+  line-height: 18px;
   font-weight: 600;
 }
 .inspiration-trigger:hover:not(:disabled) {
