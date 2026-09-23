@@ -10,6 +10,8 @@ export interface ApiItem {
   imageURL?: string;
   videoURL?: string;
   cost?: number;
+  text?: string;
+  finishReason?: string;
   code?: string;
   message?: string;
   balance?: Balance | number;

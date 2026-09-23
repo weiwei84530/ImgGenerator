@@ -317,6 +317,163 @@ async function openSettingsSection(page: Page, name: string) {
     await summary.click();
 }
 
+const inspirationIdeas = Array.from({ length: 4 }, (_, index) => ({
+  title: ['窗邊的小花園', '午後的水彩明信片', '一束溫柔的光', '紙上微型世界'][index],
+  prompt: `保留原本的主角，採用第 ${index + 1} 種構圖，讓柔和的陽光灑在花朵上，背景留下舒適的空間。`,
+}));
+
+async function mockInspiration(page: Page, hold = false) {
+  const tasks: Task[] = [];
+  let release: (() => void) | undefined;
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON() as Task[];
+    if (task.taskType !== 'textInference') return route.fallback();
+    tasks.push(task);
+    if (hold)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          {
+            taskType: 'textInference',
+            taskUUID: task.taskUUID,
+            text: JSON.stringify({ ideas: inspirationIdeas }),
+            finishReason: 'stop',
+            cost: 0.00123,
+          },
+        ],
+      }),
+    });
+  });
+  return { tasks, release: () => release?.() };
+}
+
+test('inspiration applies and undoes suggestions, records only adopted batches and hides costs', async ({
+  page,
+}, testInfo) => {
+  const api = await mockRunware(page);
+  const inspiration = await mockInspiration(page, true);
+  await setup(page);
+  await newWork(page);
+  const prompt = page.getByLabel('描述你的想法');
+  const original = await prompt.inputValue();
+  await page
+    .getByRole('button', { name: '給我一點靈感', exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+  await expect.poll(() => inspiration.tasks.length).toBe(1);
+  inspiration.release();
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  await expect(prompt).toHaveValue(original);
+  expect(api.submitted).toHaveLength(0);
+  await page.locator('.inspiration-idea').first().click();
+  await expect(prompt).toHaveValue(inspirationIdeas[0].prompt);
+  await page.getByRole('button', { name: '復原原本描述' }).click();
+  await expect(prompt).toHaveValue(original);
+  await page.locator('.inspiration-details summary').click();
+  await expect(page.locator('.prompt-history-heading')).toContainText('0 筆');
+  await page.locator('.inspiration-details summary').click();
+  await page
+    .locator('.inspiration')
+    .screenshot({ path: testInfo.outputPath('inspiration-cards.png') });
+  await page.getByLabel('設定', { exact: true }).click();
+  await openSettingsSection(page, '顯示偏好');
+  await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
+  await page
+    .getByRole('dialog', { name: '設定', exact: true })
+    .getByRole('button', { name: '關閉', exact: true })
+    .click();
+  await expect(page.locator('.inspiration-cost')).toHaveCount(0);
+  await page.locator('.inspiration-idea').nth(1).click();
+  const adopted = `${inspirationIdeas[1].prompt} 不要文字。`;
+  await prompt.fill(adopted);
+  await expect(page.locator('.inspiration-idea')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '復原原本描述' })).toHaveCount(0);
+  await page.getByRole('button', { name: '開始生成圖片' }).click();
+  await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
+  await page.getByRole('tab', { name: '編輯畫面' }).click();
+  await page.locator('.inspiration-details summary').click();
+  await expect(page.locator('.prompt-history-heading')).toContainText('1 筆');
+  await expect(page.locator('.prompt-history li')).toHaveCount(1);
+  await expect(page.locator('.prompt-history li')).toContainText(adopted);
+  await page.reload();
+  await page.locator('.inspiration-details summary').click();
+  await expect(page.locator('.prompt-history li')).toHaveCount(1);
+});
+
+test('inspiration discards late results after edits and never retries automatically', async ({
+  page,
+}) => {
+  await mockRunware(page);
+  const inspiration = await mockInspiration(page, true);
+  await setup(page, '?costs=hidden');
+  await newWork(page);
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
+  await expect.poll(() => inspiration.tasks.length).toBe(1);
+  await page.getByLabel('描述你的想法').fill('使用者已經換了新的想法');
+  inspiration.release();
+  await expect(page.locator('.inspiration .error')).toContainText('已改變');
+  await expect(page.locator('.inspiration-idea')).toHaveCount(0);
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('使用者已經換了新的想法');
+  expect(inspiration.tasks).toHaveLength(1);
+  await expect(page.locator('.inspiration-cost')).toHaveCount(0);
+  await page.context().setOffline(true);
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
+  await expect(page.locator('.inspiration .error')).toContainText('離線');
+  expect(inspiration.tasks).toHaveLength(1);
+});
+
+test('inspiration sees video photos and settings, refreshes once and preserves cards on errors', async ({
+  page,
+}) => {
+  const api = await mockRunware(page);
+  const inspiration = await mockInspiration(page);
+  await setup(page);
+  await page.getByRole('button', { name: /製作影片/ }).click();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PNG, 'base64'),
+  });
+  await expect(page.getByAltText('參考照片 1')).toBeVisible();
+  await page.getByRole('button', { name: '給我一點靈感', exact: true }).click();
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  const first = inspiration.tasks[0] as any;
+  expect(first.inputs.images).toHaveLength(1);
+  expect(first.inputs.images[0]).toMatch(/^data:image\/png;base64,/);
+  expect(JSON.parse(first.messages[0].content)).toMatchObject({
+    kind: 'video',
+    currentPrompt: '',
+    durationSeconds: 4,
+    audio: false,
+    historyNewestFirst: [],
+  });
+  await page.getByRole('button', { name: '換一批', exact: true }).click();
+  await expect.poll(() => inspiration.tasks.length).toBe(2);
+  await expect(page.getByRole('button', { name: '換一批', exact: true })).toBeEnabled();
+  expect(JSON.parse((inspiration.tasks[1] as any).messages[0].content).previousSuggestions).toEqual(
+    inspirationIdeas.map((idea) => idea.prompt),
+  );
+  expect(api.submitted).toHaveLength(0);
+  await page.route('https://api.runware.ai/v1', async (route) => {
+    const [task] = route.request().postDataJSON();
+    if (task.taskType !== 'textInference') return route.fallback();
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ errors: [{ code: 'insufficientCredits' }] }),
+    });
+  });
+  await page.getByRole('button', { name: '換一批', exact: true }).click();
+  await expect(page.locator('.inspiration .error')).toContainText('帳戶狀態');
+  await expect(page.locator('.inspiration-idea')).toHaveCount(4);
+  await expect(page.getByLabel('描述你的想法')).toHaveValue('');
+});
+
 test('category defaults remember parameters while new works keep prompts and references empty', async ({
   page,
 }) => {

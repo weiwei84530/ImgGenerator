@@ -30,6 +30,7 @@ import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
 import { WelcomeIllustration } from './WelcomeIllustration';
 import { ModelPicker, ProviderLogo } from './ModelPicker';
+import { InspirationPanel } from './InspirationPanel';
 import { queueGeneration, resumeJobs, runJob } from './engine';
 import { currentDraft, dimensions, models, modelsFor, promptLimit, supports1080 } from './models';
 import { rememberDraft, rememberedDraft, clearDraftDefaults } from './draft-defaults';
@@ -406,6 +407,8 @@ function MoneyBadge({
 function Workspace({
   work,
   jobs,
+  historyJobs,
+  refreshBalance,
   apiKey,
   showMoney,
   initialTab,
@@ -414,6 +417,8 @@ function Workspace({
 }: {
   work: Work;
   jobs: Job[];
+  historyJobs: Job[];
+  refreshBalance: () => void;
   apiKey: string;
   showMoney: boolean;
   initialTab: WorkTab;
@@ -575,6 +580,16 @@ function Workspace({
                 目前模型最多接受 {promptLimit(draft).toLocaleString()} 字，請縮短描述。
               </p>
             )}
+            <InspirationPanel
+              workId={work.id}
+              draft={draft}
+              jobs={historyJobs}
+              apiKey={apiKey}
+              showMoney={showMoney}
+              disabled={uploading || submitting}
+              onApply={(prompt) => update({ prompt })}
+              onSettled={refreshBalance}
+            />
             <div className="refs">
               {draft.refs.map((ref, index) => (
                 <div className="ref-image" key={ref}>
@@ -1506,6 +1521,8 @@ export default function App() {
               key={`${current.id}:${workTab}`}
               work={current}
               jobs={jobs.filter((j) => j.workId === current.id)}
+              historyJobs={jobs}
+              refreshBalance={() => void refreshBalance()}
               apiKey={apiKey}
               showMoney={preferences.showMoney}
               initialTab={workTab}
