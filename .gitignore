@@ -1,5 +1,5 @@
 # Local project instructions and private planning context.
-/AGENTS.md
+/AGENTS.override.md
 node_modules/
 dist/
 test-results/

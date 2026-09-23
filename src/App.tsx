@@ -28,6 +28,7 @@ import {
 import { clearWorks, getMedia, removeWork, saveWork, snapshot, storageUsage } from './db';
 import { exportBackup, importBackup } from './backup';
 import { HomeIllustration } from './HomeIllustration';
+import { HomeTour } from './HomeTour';
 import { WelcomeIllustration } from './WelcomeIllustration';
 import { ModelPicker, ProviderLogo } from './ModelPicker';
 import { InspirationPanel } from './InspirationPanel';
@@ -57,8 +58,9 @@ import {
   type ModelId,
 } from './types';
 
-const REPO = 'https://github.com/weiwei84530/ImgGenerator';
+const REPO = 'https://github.com/weiwei84530/seed-gallery';
 const STUDIO = 'https://weiweistudio.com';
+const HOME_TOUR_KEY = 'img-generator.home-tour-seen';
 const STORAGE_NOTE = '圖像只暫存在瀏覽器；喜歡的作品請記得下載到裝置，避免遺失。';
 const formatBytes = (bytes: number) =>
   bytes === 0
@@ -320,6 +322,9 @@ function KeyForm({
           {error}
         </p>
       )}
+      <a className="small-link" href="https://runware.ai" target="_blank" rel="noreferrer">
+        前往 Runware 取得 API Key <ExternalLink size={13} />
+      </a>
       <button className="primary full" disabled={busy || !input.trim()}>
         {busy ? <LoaderCircle className="spin" /> : <ArrowRight />}
         {busy ? '正在確認服務…' : replacing ? '驗證並更換 Key' : '連線，開始創作'}
@@ -376,9 +381,6 @@ function Welcome({
             稍後設定 API Key
           </button>
         )}
-        <a className="small-link" href="https://runware.ai" target="_blank" rel="noreferrer">
-          前往 Runware 取得 API Key <ExternalLink size={13} />
-        </a>
       </section>
       <Privacy />
     </div>
@@ -1039,6 +1041,7 @@ function Workspace({
 
 export default function App() {
   const topbarRef = useRef<HTMLElement>(null);
+  const brandRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const topbar = topbarRef.current;
     if (!topbar) return;
@@ -1054,6 +1057,7 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
   const [apiKey, setApiKey] = useState(readKey);
+  const [showHomeTour, setShowHomeTour] = useState(false);
   const [guestMode, setGuestMode] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
   const [screen, setScreen] = useState<Screen>('home');
@@ -1085,6 +1089,10 @@ export default function App() {
     [],
   );
   const enteredStudio = Boolean(apiKey || guestMode);
+  useEffect(() => {
+    if (enteredStudio && screen === 'home' && !loading && !settings && !localStorage.getItem(HOME_TOUR_KEY))
+      setShowHomeTour(true);
+  }, [enteredStudio, screen, loading, settings]);
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
   const balanceSequence = useRef(0);
@@ -1304,7 +1312,7 @@ export default function App() {
     setGuestMode(false);
     setConnectionState('checking');
     if (key === apiKey) void refreshBalance();
-    notify(replacing ? '已更換 API Key。' : '服務已連線，開始創作吧。');
+    if (replacing) notify('已更換 API Key。');
     const homeState: NavigationState = { studio: true, screen: 'home' };
     history.replaceState(homeState, '');
     applyNavigation(homeState);
@@ -1350,6 +1358,7 @@ export default function App() {
       </div>
       <header className="topbar" ref={topbarRef}>
         <button
+          ref={brandRef}
           className="brand"
           onClick={() => navigate({ screen: 'home' })}
           aria-label="種子畫廊首頁"
@@ -1404,6 +1413,15 @@ export default function App() {
           </div>
         )}
       </header>
+      {showHomeTour && enteredStudio && screen === 'home' && !loading && !settings && (
+        <HomeTour
+          target={brandRef.current}
+          onDismiss={() => {
+            localStorage.setItem(HOME_TOUR_KEY, '1');
+            setShowHomeTour(false);
+          }}
+        />
+      )}
       {offline && (
         <div className="notice" role="status">
           目前離線，仍可瀏覽已保存的作品。
@@ -1853,6 +1871,7 @@ export default function App() {
                       await clearWorks();
                       saveKey('');
                       resetPreferences();
+                      localStorage.removeItem(HOME_TOUR_KEY);
                       clearDraftDefaults();
                       setApiKey('');
                       setGuestMode(false);
