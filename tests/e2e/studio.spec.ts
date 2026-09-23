@@ -30,7 +30,7 @@ test('rapid clicks submit once and reset removes saved data and credentials', as
   await openSettingsSection(page, '顯示偏好');
   await page.getByRole('switch', { name: /顯示餘額與費用/ }).uncheck();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
   await expect(page.getByRole('heading', { name: '設定服務' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('img-generator.key'))).toBeNull();
@@ -413,7 +413,7 @@ test('video first-frame generation plays and downloads, hides costs, and survive
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   const backup = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await (await backup).path();
@@ -600,7 +600,7 @@ test('backup restore, deletion, key removal and offline images', async ({ page }
   await expect(page.getByRole('button', { name: /檢視 .* 圖片/ })).toHaveCount(2);
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出備份' }).click();
   const archive = await downloaded;
@@ -1121,7 +1121,7 @@ test('deleting one work frees its reference files and guest reset returns to set
   await expect(page.getByAltText('參考照片 1')).toBeVisible();
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('1 KB');
   await page.getByRole('dialog').getByLabel('關閉', { exact: true }).click();
   await page.getByLabel('種子畫廊首頁').click();
@@ -1130,7 +1130,7 @@ test('deleting one work frees its reference files and guest reset returns to set
   await expect(page.locator('.saved-work')).toHaveCount(0);
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   await expect(page.getByLabel('作品暫存大小').locator('strong')).toHaveText('0 KB');
   await page.screenshot({ path: testInfo.outputPath('storage-settings.png'), fullPage: true });
   await page.getByRole('button', { name: '清除資料並重設服務' }).click();
@@ -1302,13 +1302,13 @@ test('library pagination preview uses isolated sample artwork and storage sectio
   await page.screenshot({ path: testInfo.outputPath('library-all-twelve.png') });
   await page.getByLabel('設定', { exact: true }).click();
   await openSettingsSection(page, '作品儲存');
-  await openSettingsSection(page, '備份與還原');
+  await openSettingsSection(page, '備份與重置');
   const storage = page
     .locator('details')
     .filter({ has: page.locator('summary', { hasText: '作品儲存' }) });
   const backup = page
     .locator('details')
-    .filter({ has: page.locator('summary', { hasText: '備份與還原' }) });
+    .filter({ has: page.locator('summary', { hasText: '備份與重置' }) });
   await expect(storage.getByRole('button', { name: '刪除所有作品' })).toBeVisible();
   await expect(storage.getByRole('button', { name: '匯出備份' })).toHaveCount(0);
   await expect(backup.getByRole('button', { name: '匯出備份' })).toBeVisible();

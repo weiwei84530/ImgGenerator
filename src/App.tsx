@@ -1759,7 +1759,7 @@ export default function App() {
             </details>
             <details className="settings-section">
               <summary>
-                備份與還原 <ChevronDown size={17} />
+                備份與重置 <ChevronDown size={17} />
               </summary>
               <div className="settings-section-body">
                 <p className="hint">
@@ -1816,44 +1816,41 @@ export default function App() {
                 <p className="hint">
                   還原會保留原有作品。單次可匯入 250 MB 以內的 ZIP；重要成果也請另外下載保存。
                 </p>
+                <button
+                  className="text-button danger"
+                  disabled={active || dataBusy}
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
+                      )
+                    )
+                      return;
+                    setDataBusy(true);
+                    try {
+                      await clearWorks();
+                      saveKey('');
+                      resetPreferences();
+                      clearDraftDefaults();
+                      setApiKey('');
+                      setGuestMode(false);
+                      setPreferences(readPreferences());
+                      const homeState: NavigationState = { studio: true, screen: 'home' };
+                      history.replaceState(homeState, '');
+                      applyNavigation(homeState);
+                      notify('已重設這台裝置。');
+                    } catch {
+                      notify('重設未完成，請稍後再試。');
+                    } finally {
+                      setDataBusy(false);
+                    }
+                  }}
+                >
+                  清除資料並重設服務
+                </button>
+                <p className="hint">一併移除作品、API Key 與偏好。無法復原，請先備份。</p>
               </div>
             </details>
-            <div className="reset-service">
-              <strong>重設這台裝置</strong>
-              <p className="hint">一併移除作品、API Key 與偏好。無法復原，請先備份。</p>
-              <button
-                className="text-button danger"
-                disabled={active || dataBusy}
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      '重設這台裝置？所有作品、照片、Key 與顯示偏好都會刪除，無法復原。請先匯出備份。',
-                    )
-                  )
-                    return;
-                  setDataBusy(true);
-                  try {
-                    await clearWorks();
-                    saveKey('');
-                    resetPreferences();
-                    clearDraftDefaults();
-                    setApiKey('');
-                    setGuestMode(false);
-                    setPreferences(readPreferences());
-                    const homeState: NavigationState = { studio: true, screen: 'home' };
-                    history.replaceState(homeState, '');
-                    applyNavigation(homeState);
-                    notify('已重設這台裝置。');
-                  } catch {
-                    notify('重設未完成，請稍後再試。');
-                  } finally {
-                    setDataBusy(false);
-                  }
-                }}
-              >
-                清除資料並重設服務
-              </button>
-            </div>
             <div className="studio-credit">
               Made by{' '}
               <a href={STUDIO} target="_blank" rel="noreferrer">
